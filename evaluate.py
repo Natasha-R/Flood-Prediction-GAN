@@ -1,12 +1,242 @@
 import models
 import data
+import utils
+
 import numpy as np
 import matplotlib.pyplot as plt
+import argparse
+import os
+
 import torch
 from torch import nn
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
+def generate_images(dataset_subset,
+                    dataset_dem,
+                    data_path,
+                    model,
+                    not_input_topography,
+                    resize,
+                    crop,
+                    num_images,
+                    saved_model_path=None,
+                    trained_model=None,
+                    epoch=None):
+    
+    if not_input_topography:
+        input_channels = 3
+    else: # if input_topography
+        input_channels = 9
+        
+    # loading a saved model from path
+    if saved_model_path:
+        saved_model = torch.load(saved_model_path)
+        epoch = saved_model["starting_epoch"] - 1
+        if model.lower()=="pix2pix":
+            generator = models.Pix2PixGenerator(input_channels=input_channels).to(device)
+            generator.load_state_dict(saved_model["generator"])
+            generators = [generator.eval()]
+        elif model.lower() == "cyclegan":
+            pre_to_post_generator = models.CycleGANGenerator(input_channels=input_channels).to(device)
+            post_to_pre_generator = models.CycleGANGenerator(input_channels=input_channels).to(device)
+            pre_to_post_generator.load_state_dict(saved_model["pre_to_post_generator"])
+            post_to_pre_generator.load_state_dict(saved_model["post_to_pre_generator"])
+            generators = [pre_to_post_generator.eval(), post_to_pre_generator.eval()]
+        elif model.lower() == "attentiongan":
+            None
+        else:
+            raise NotImplementedError("Model must be one of: Pix2Pix, CycleGAN or AttentionGAN")
+        
+    # loading a trained model
+    elif trained_model:
+        if model.lower()=="pix2pix":
+            generators = [trained_model.eval()]
+        elif model.lower() == "cyclegan":
+            pre_to_post_generator = trained_model[0].eval()
+            post_to_pre_generator = trained_model[1].eval()
+            generators = [pre_to_post_generator, post_to_pre_generator]
+        elif model.lower() == "attentiongan":
+            None
+    else:
+        NotImplementedError("Either the path to a saved model, or a trained model, must be provided")
+        
+    train_loader, val_loader, _ = data.create_dataset(dataset_subset, dataset_dem, data_path, not_input_topography, resize=resize, crop=crop)
+    if num_images > min(len(train_loader), len(val_loader)):
+        raise ValueError(f"Enter num_images as {min(len(train_loader), len(val_loader))} or fewer")
+
+    index_to_generator={0:"pre_to_post",
+                        1:"post_to_pre"}
+    for gen_index, generator in enumerate(generators):
+        with torch.no_grad():
+            for split, loader in zip(["train", "val"], [train_loader, val_loader]):
+                
+                fig, axes = plt.subplots(nrows=num_images, ncols=3, figsize=(15, num_images * 5))
+                for ax in axes.ravel():
+                    ax.set_axis_off()
+                torch.manual_seed(47)
+                
+                for i, (input_stack, output_image) in enumerate(loader):
+                    if gen_index==1: ## if generator is post-to-pre then flip the inputs
+                        if not_input_topography:
+                            store_output = output_image.clone()
+                            output_image = input_stack.to(device)
+                            input_stack = store_output.to(device)
+                        else:
+                            topography = input_stack[:, 3:, :, :].detach().clone()
+                            input_stack = torch.cat((output_image, topography), dim=1).to(device)
+                            output_image = input_stack[:, :3, :, :].to(device)
+                    else:
+                        input_stack = input_stack.to(device)
+                        output_image = output_image.to(device)
+                        
+                    axes[i, 0].imshow(input_stack.squeeze().cpu().detach().numpy().transpose(1, 2, 0)[:, :, :3], vmin=0, vmax=1)
+                    axes[i, 1].imshow(np.clip(generator(input_stack).squeeze().cpu().detach().numpy().transpose(1, 2, 0)[:, :, :3], 0, 1), vmin=0, vmax=1)
+                    axes[i, 2].imshow(output_image.squeeze().cpu().detach().numpy().transpose(1, 2, 0)[:, :, :3], vmin=0, vmax=1)
+                    axes[i, 0].set_title("Input")
+                    axes[i, 1].set_title("Generator Output")
+                    axes[i, 2].set_title("Ground Truth Output")
+                    if i >= num_images-1:
+                        break
+                fig.tight_layout() 
+                if "cyclegan" in model.lower():
+                    model = f"{index_to_generator[gen_index]}_cyclegan"
+                images_path = utils.create_path("image", model.lower(), data_path, split, dataset_subset, dataset_dem, not_input_topography, resize, crop, epoch)
+                print(f"Saving {split} images to {images_path}")
+                fig.savefig(images_path)
+                plt.close();
+            
+def print_losses(dataset_subset,
+                 dataset_dem,
+                 data_path,
+                 model,
+                 not_input_topography,
+                 resize,
+                 crop,
+                 saved_model_path):
+    
+    train_loader, val_loader, _ = data.create_dataset(dataset_subset, dataset_dem, data_path, not_input_topography, resize=resize, crop=crop)
+    saved_model = torch.load(saved_model_path)
+    epoch = saved_model["starting_epoch"]
+    if not_input_topography:
+        input_channels = 3
+    else: # if input_topography
+        input_channels = 9
+        
+    if model.lower()=="pix2pix":
+        generator = models.Pix2PixGenerator(input_channels=input_channels).to(device)
+        discriminator = models.Pix2PixDiscriminator(input_channels=input_channels).to(device)
+        discriminator.load_state_dict(saved_model["discriminator"])
+        generator.load_state_dict(saved_model["generator"])
+        discriminator.eval()
+        generator.eval()
+        loss_func = nn.BCEWithLogitsLoss()
+        l1_loss = nn.L1Loss()  
+        
+        for loader_name, loader in zip(["train", "validation"], [train_loader, val_loader]):
+            losses = utils.initialise_loss_storage("Pix2Pix", overall=False)
+            all_losses = utils.initialise_loss_storage("Pix2Pix", overall=True)
+            with torch.no_grad():
+                torch.manual_seed(47)
+                for input_stack, output_image in loader:
+                    input_stack = input_stack.to(device)
+                    output_image = output_image.to(device)
+                    synthetic_output = generator(input_stack)
+                    concat_real = torch.cat((input_stack, output_image), 1)
+                    concat_synthetic = torch.cat((input_stack, synthetic_output), 1)
+                    prediction_discriminator_real = discriminator(concat_real)
+                    prediction_discriminator_synthetic = discriminator(concat_synthetic)
+                    discriminator_prediction_shape = prediction_discriminator_synthetic.shape
+
+                    loss_discriminator_synthetic = loss_func(prediction_discriminator_synthetic,
+                                                             torch.full(discriminator_prediction_shape, 0., dtype=torch.float32, device=device))
+                    loss_discriminator_real = loss_func(prediction_discriminator_real,
+                                                        torch.full(discriminator_prediction_shape, 1., dtype=torch.float32, device=device))
+                    loss_generator_synthetic = loss_func(prediction_discriminator_synthetic, 
+                                                         torch.full(discriminator_prediction_shape, 1., dtype=torch.float32, device=device))
+                    l1_loss_generator_synthetic = l1_loss(synthetic_output, output_image) * 100
+
+                    losses["losses_discriminator_real"].append(loss_discriminator_real.detach().cpu().item())
+                    losses["losses_discriminator_synthetic"].append(loss_discriminator_synthetic.detach().cpu().item())
+                    losses["losses_generator_synthetic"].append(loss_generator_synthetic.detach().cpu().item())
+                    losses["l1_losses_generator_synthetic"].append(l1_loss_generator_synthetic.detach().cpu().item())
+
+                for key in all_losses.keys():
+                    all_losses[key].append(np.mean(losses[key[4:]]))
+                print(f"\nLosses on the {loader_name} dataset:")
+                utils.print_losses("pix2pix", epoch, all_losses)
+                
+    elif model.lower() == "cyclegan":
+        pre_to_post_generator = models.CycleGANGenerator(input_channels=input_channels).to(device)
+        post_to_pre_generator = models.CycleGANGenerator(input_channels=input_channels).to(device)
+        pre_discriminator = models.CycleGANDiscriminator(input_channels=input_channels).to(device)
+        post_discriminator = models.CycleGANDiscriminator(input_channels=input_channels).to(device)
+        pre_to_post_generator.load_state_dict(saved_model["pre_to_post_generator"])
+        post_to_pre_generator.load_state_dict(saved_model["post_to_pre_generator"])
+        pre_discriminator.load_state_dict(saved_model["pre_discriminator"])
+        post_discriminator.load_state_dict(saved_model["post_discriminator"])
+        pre_to_post_generator.eval()
+        post_to_pre_generator.eval()
+        pre_discriminator.eval()
+        post_discriminator.eval()
+        loss_func = nn.MSELoss()
+        cycle_loss = nn.L1Loss()
+        
+        for loader_name, loader in zip(["train", "validation"], [train_loader, val_loader]):
+            losses = utils.initialise_loss_storage("CycleGAN", overall=False)
+            all_losses = utils.initialise_loss_storage("CycleGAN", overall=True)
+            with torch.no_grad():
+                torch.manual_seed(47)
+                for input_stack, output_image in loader:
+                    real_pre_image = input_stack.to(device)
+                    real_post_image = output_image.to(device)
+                    if not not_input_topography:
+                        topography = input_stack[:, 3:, :, :].detach().clone()
+                        real_post_image = torch.cat((real_post_image, topography.clone().to(device)), dim=1)
+                    synthetic_post_image = pre_to_post_generator(real_pre_image)
+                    synthetic_pre_image = post_to_pre_generator(real_post_image)
+                    if not not_input_topography:
+                        synthetic_post_image = torch.cat((synthetic_post_image, topography.clone().to(device)), dim=1)
+                        synthetic_pre_image = torch.cat((synthetic_pre_image, topography.clone().to(device)), dim=1)
+                    recreated_post_image = pre_to_post_generator(synthetic_pre_image)  
+                    recreated_pre_image = post_to_pre_generator(synthetic_post_image)       
+                    
+                    discriminator_prediction_shape = post_discriminator(synthetic_post_image).shape
+                    post_generator_loss = loss_func(post_discriminator(synthetic_post_image), 
+                                                    torch.full(discriminator_prediction_shape, 1., dtype=torch.float32, device=device))
+                    pre_generator_loss = loss_func(pre_discriminator(synthetic_pre_image), 
+                                                   torch.full(discriminator_prediction_shape, 1., dtype=torch.float32, device=device))
+                    pre_to_post_cycle_loss = cycle_loss(recreated_pre_image, real_pre_image[:, :3, :, :]) * 10
+                    post_to_pre_cycle_loss = cycle_loss(recreated_post_image, real_post_image[:, :3, :, :]) * 10                                       
+                    loss_discriminator_real_pre = loss_func(pre_discriminator(real_pre_image),
+                                                           torch.full(discriminator_prediction_shape, 1., dtype=torch.float32, device=device))
+                    loss_discriminator_synthetic_pre = loss_func(pre_discriminator(synthetic_pre_image),
+                                                                torch.full(discriminator_prediction_shape, 0., dtype=torch.float32, device=device))
+                    loss_discriminator_real_post = loss_func(post_discriminator(real_post_image),
+                                                            torch.full(discriminator_prediction_shape, 1., dtype=torch.float32, device=device))
+                    loss_discriminator_synthetic_post = loss_func(post_discriminator(synthetic_post_image),
+                                                                 torch.full(discriminator_prediction_shape, 0., dtype=torch.float32, device=device))
+                    
+                    losses["losses_generator_post"].append(post_generator_loss.detach().cpu().item())
+                    losses["losses_generator_pre"].append(pre_generator_loss.detach().cpu().item())
+                    losses["losses_pre_to_post_cycle"].append(pre_to_post_cycle_loss.detach().cpu().item())
+                    losses["losses_post_to_pre_cycle"].append(post_to_pre_cycle_loss.detach().cpu().item())
+                    losses["losses_discriminator_pre_real"].append(loss_discriminator_real_pre.detach().cpu().item())
+                    losses["losses_discriminator_post_real"].append(loss_discriminator_real_post.detach().cpu().item())
+                    losses["losses_discriminator_pre_synthetic"].append(loss_discriminator_synthetic_pre.detach().cpu().item())
+                    losses["losses_discriminator_post_synthetic"].append(loss_discriminator_synthetic_post.detach().cpu().item())
+                    
+                for key in all_losses.keys():
+                    all_losses[key].append(np.mean(losses[key[4:]]))
+                print(f"\nLosses on the {loader_name} dataset:")
+                utils.print_losses("cyclegan", epoch, all_losses)
+                
+    elif model.lower() == "attentiongan":
+        None
+        
+    else:
+        raise NotImplementedError("Model must be one of: Pix2Pix, CycleGAN or AttentionGAN")
+        
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Evaluate a trained Pix2Pix, CycleGAN or AttentionGAN model on the flood images dataset.")
     parser.add_argument("--model", required=True, help="Model can be one of: Pix2Pix, CycleGAN or AttentionGAN")
@@ -17,163 +247,30 @@ if __name__ == "__main__":
     parser.add_argument("--num_images", type=int, default=5, help="The number of images the generator should create")
     parser.add_argument("--resize", type=int, default=256, help="Resize the images to the given size. The resize is applied before the crop")
     parser.add_argument("--crop", type=int, default=None, help="Crop each image into the given number of images. The resize is applied before the crop")
-    parser.add_argument("--print_losses", action="store_true", help="Print the model's losses on the dataset")
-    parser.add_argument("--save_images", action="store_true", help="Save generated images")
+    parser.add_argument("--print_losses", action="store_true", default=False, help="Print the model's losses on the dataset")
+    parser.add_argument("--save_images", action="store_true", default=False, help="Save generated images")
+    parser.add_argument("--not_input_topography", action="store_true", default=False, help="The additional topographical factors (DEM/flow accumulation/distance to rivers/map) should NOT be input to the model")
     args = parser.parse_args()
     
-if args.save_images:
-    generate_images(args.dataset_subset,
-                    args.dataset_dem,
-                    args.data_path,
-                    args.model,
-                    args.resize,
-                    args.crop,
-                    args.saved_model_path,
-                    args.num_images)
-if args.print_losses:
-    print_losses(ags.dataset_subset,
-                 args.dataset_dem,
-                 args.data_path,
-                 args.model,
-                 args.resize,
-                 args.crop,
-                 args.saved_model_path)
-    
-def generate_images(dataset_subset,
-                    dataset_dem,
-                    data_path,
-                    model,
-                    resize,
-                    crop,
-                    saved_model_path,
-                    num_images):
-    
-    # set-up
-    train_loader, val_loader, _ = data.create_dataset(dataset_subset, dataset_dem, data_path, resize=resize, crop=crop)
-    saved_model = torch.load(saved_model_path)
-    epoch = saved_model["starting_epoch"]
-    
-    if model.lower()=="pix2pix":
-        generator = models.Pix2PixGenerator().to(device)
-        generator.load_state_dict(saved_model["generator"])
-    elif model.lower() == "cyclegan":
-        None
-    elif model.lower() == "attentiongan":
-        None
-    else:
-        raise NotImplementedError("Model must be one of: Pix2Pix, CycleGAN or AttentionGAN")
-        
-    if num_images > min(len(train_loader), len(val_loader)):
-        raise ValueError(f"Enter num_images as {min(len(train_loader), len(val_loader))} or fewer")
-          
-    # save images
-    generator.eval()
-    with torch.no_grad():
-        for split, loader in zip(["train", "val"], [train_loader, val_loader]):
-            fig, axes = plt.subplots(nrows=num_images, ncols=3, figsize=(15, num_images * 5))
-            for ax in axes.ravel():
-                ax.set_axis_off()
-            torch.manual_seed(47)
-            for i, (input_stack, output_image) in enumerate(loader):
-                input_stack = input_stack.to(device)
-                output_image = output_image.to(device)
-                axes[i, 0].imshow(input_stack.squeeze().cpu().detach().numpy().transpose(1, 2, 0)[:, :, :3], vmin=0, vmax=1)
-                axes[i, 1].imshow(np.clip(generator(input_stack).squeeze().cpu().detach().numpy().transpose(1, 2, 0)[:, :, :3], 0, 1), vmin=0, vmax=1)
-                axes[i, 2].imshow(output_image.squeeze().cpu().detach().numpy().transpose(1, 2, 0), vmin=0, vmax=1)
-                axes[i, 0].set_title("Input")
-                axes[i, 1].set_title("Generator Output")
-                axes[i, 2].set_title("Ground Truth Output")
-                if i >= num_images-1:
-                    break
-            fig.tight_layout()
-            fig.savefig(f"{data_path}/data/images/{model}_{split}_{dataset_subset}_{dataset_dem}DEM_resize{resize}_crop{crop}_epoch{epoch}_{str(datetime.now())[:-7].replace(' ', '-').replace(':', '-')}.png")
-            plt.close();
+    if not os.path.isfile(args.saved_model_path):
+        raise FileNotFoundError("Saved model not found. Check the path to the saved model.")
             
-def print_losses(dataset_subset,
-                 dataset_dem,
-                 model,
-                 resize,
-                 crop,
-                 saved_model_path):
-
-    if model.lower()=="pix2pix":
-        # set-up
-        train_loader, val_loader, _ = data.create_dataset(dataset_subset, dataset_dem, resize=resize, crop=crop)
-        saved_model = torch.load(saved_model_path)
-        epoch = saved_model["starting_epoch"]
-        generator = models.Pix2PixGenerator().to(device)
-        generator.load_state_dict(saved_model["generator"])
-        discriminator = models.Pix2PixDiscriminator().to(device)
-        discriminator.load_state_dict(saved_model["discriminator"])
-        train_losses_discriminator_synthetic = []
-        train_losses_generator_synthetic = []
-        train_l1_losses_generator_synthetic = []
-        train_losses_discriminator_real = []
-        val_losses_discriminator_synthetic = []
-        val_losses_generator_synthetic = []
-        val_l1_losses_generator_synthetic = []
-        val_losses_discriminator_real = []
-
-        # print losses
-        for input_stack, output_image in train_loader:
-
-            input_stack = input_stack.to(device)
-            output_image = output_image.to(device)
-
-            synthetic_output = generator(input_stack)
-            concat_synthetic = torch.cat((input_stack, synthetic_output), 1)
-            concat_real = torch.cat((input_stack, output_image), 1)
-            prediction_discriminator_real = discriminator(concat_real)
-            prediction_discriminator_synthetic = discriminator(concat_synthetic)
-
-            loss_func = nn.BCEWithLogitsLoss()
-            l1_loss = nn.L1Loss()  
-
-            l1_loss_generator_synthetic = l1_loss(synthetic_output, output_image) * 100
-            label_1 = torch.full(prediction_discriminator_synthetic.shape, 1., dtype=torch.float32, device=device)
-            loss_generator_synthetic = loss_func(prediction_discriminator_synthetic, label_1)
-            label_0 = torch.full(prediction_discriminator_synthetic.shape, 0., dtype=torch.float32, device=device)
-            loss_discriminator_synthetic = loss_func(prediction_discriminator_synthetic, label_0)
-            label_1 = torch.full(prediction_discriminator_real.shape, 1., dtype=torch.float32, device=device)
-            loss_discriminator_real = loss_func(prediction_discriminator_real, label_1)
-
-            train_losses_discriminator_real.append(loss_discriminator_real.detach().cpu().item())
-            train_losses_discriminator_synthetic.append(loss_discriminator_synthetic.detach().cpu().item())
-            train_losses_generator_synthetic.append(loss_generator_synthetic.detach().cpu().item())
-            train_l1_losses_generator_synthetic.append(l1_loss_generator_synthetic.detach().cpu().item())
-
-        for input_stack, output_image in val_loader:
-
-            input_stack = input_stack.to(device)
-            output_image = output_image.to(device)
-
-            synthetic_output = generator(input_stack)
-            concat_synthetic = torch.cat((input_stack, synthetic_output), 1)
-            concat_real = torch.cat((input_stack, output_image), 1)
-            prediction_discriminator_real = discriminator(concat_real)
-            prediction_discriminator_synthetic = discriminator(concat_synthetic)
-
-            loss_func = nn.BCEWithLogitsLoss()
-            l1_loss = nn.L1Loss()  
-
-            l1_loss_generator_synthetic = l1_loss(synthetic_output, output_image) * 100
-            label_1 = torch.full(prediction_discriminator_synthetic.shape, 1., dtype=torch.float32, device=device)
-            loss_generator_synthetic = loss_func(prediction_discriminator_synthetic, label_1)
-            label_0 = torch.full(prediction_discriminator_synthetic.shape, 0., dtype=torch.float32, device=device)
-            loss_discriminator_synthetic = loss_func(prediction_discriminator_synthetic, label_0)
-            label_1 = torch.full(prediction_discriminator_real.shape, 1., dtype=torch.float32, device=device)
-            loss_discriminator_real = loss_func(prediction_discriminator_real, label_1)
-
-            val_losses_discriminator_real.append(loss_discriminator_real.detach().cpu().item())
-            val_losses_discriminator_synthetic.append(loss_discriminator_synthetic.detach().cpu().item())
-            val_losses_generator_synthetic.append(loss_generator_synthetic.detach().cpu().item())
-            val_l1_losses_generator_synthetic.append(l1_loss_generator_synthetic.detach().cpu().item())
-
-        print(f"Average discriminator loss on synthetic training data: {np.mean(train_losses_discriminator_synthetic):.2f}\n",
-              f"Average discriminator loss on synthetic validation data: {np.mean(val_losses_discriminator_synthetic):.2f}\n",
-              f"Average discriminator loss on real training data: {np.mean(train_losses_discriminator_real):.2f}\n",
-              f"Average discriminator loss on real validation data: {np.mean(val_losses_discriminator_real):.2f}\n",
-              f"Average generator loss on synthetic training data: {np.mean(train_losses_generator_synthetic):.2f}\n",
-              f"Average generator loss on synthetic validation data: {np.mean(val_losses_generator_synthetic):.2f}\n",
-              f"Average generator L1 loss on synthetic training data: {np.mean(train_l1_losses_generator_synthetic):.2f}\n",
-              f"Average generator L1 loss on synthetic validation data: {np.mean(val_l1_losses_generator_synthetic):.2f}\n",)
+    if args.save_images:
+        generate_images(args.dataset_subset,
+                        args.dataset_dem,
+                        args.data_path,
+                        args.model,
+                        args.not_input_topography,
+                        args.resize,
+                        args.crop,
+                        args.num_images,
+                        args.saved_model_path)
+    if args.print_losses:
+        print_losses(args.dataset_subset,
+                     args.dataset_dem,
+                     args.data_path,
+                     args.model,
+                     args.not_input_topography,
+                     args.resize,
+                     args.crop,
+                     args.saved_model_path)

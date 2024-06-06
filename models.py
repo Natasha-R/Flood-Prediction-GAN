@@ -4,7 +4,7 @@ from torch import nn
 ## Pix2Pix ##########################################################################################
 
 class Pix2PixGenerator(nn.Module):
-    def __init__(self):
+    def __init__(self, input_channels):
         super(Pix2PixGenerator, self).__init__()
 
         unet_block = SkipConnectionBlock(outer_nc=512, inner_nc=512, input_nc=None, submodule=None, outermost=False, innermost=True, use_dropout=False)
@@ -13,7 +13,7 @@ class Pix2PixGenerator(nn.Module):
         unet_block = SkipConnectionBlock(outer_nc=256, inner_nc=512, input_nc=None, submodule=unet_block, outermost=False, innermost=False, use_dropout=False)
         unet_block = SkipConnectionBlock(outer_nc=128, inner_nc=256, input_nc=None, submodule=unet_block, outermost=False, innermost=False, use_dropout=False)
         unet_block = SkipConnectionBlock(outer_nc=64, inner_nc=128, input_nc=None, submodule=unet_block, outermost=False, innermost=False, use_dropout=False)
-        self.model = SkipConnectionBlock(outer_nc=3, inner_nc=64, input_nc=9, submodule=unet_block, outermost=True, innermost=False, use_dropout=False)
+        self.model = SkipConnectionBlock(outer_nc=3, inner_nc=64, input_nc=input_channels, submodule=unet_block, outermost=True, innermost=False, use_dropout=False)
 
     def forward(self, input):
         return self.model(input)
@@ -59,10 +59,10 @@ class SkipConnectionBlock(nn.Module):
             return torch.cat([x, self.model(x)], 1)
         
 class Pix2PixDiscriminator(nn.Module):
-    def __init__(self):
+    def __init__(self, input_channels):
         super(Pix2PixDiscriminator, self).__init__()
         
-        sequence = [nn.Conv2d(12, 64, kernel_size=4, stride=2, padding=1), nn.LeakyReLU(0.2, True)]
+        sequence = [nn.Conv2d(input_channels + 3, 64, kernel_size=4, stride=2, padding=1), nn.LeakyReLU(0.2, True)]
         nf_mult = 1
         nf_mult_prev = 1
         for n in range(1, 3):
@@ -129,10 +129,10 @@ class ResnetBlock(nn.Module):
         return out
     
 class CycleGANDiscriminator(nn.Module):
-    def __init__(self):
+    def __init__(self, input_channels):
         super(CycleGANDiscriminator, self).__init__()
         
-        sequence = [nn.Conv2d(3, 64, kernel_size=4, stride=2, padding=1), nn.LeakyReLU(0.2, True)]
+        sequence = [nn.Conv2d(input_channels, 64, kernel_size=4, stride=2, padding=1), nn.LeakyReLU(0.2, True)]
         nf_mult = 1
         nf_mult_prev = 1
         for n in range(1, 3):

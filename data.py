@@ -9,14 +9,15 @@ from torchvision.transforms import Resize
 def create_dataset(dataset_subset, # "usa", "india", "hurricane-harvey", "hurricane-florence", "midwest-flooding", "nepal-flooding", "testing", "all"
                    dataset_dem, # "best", "same"
                    path, 
+                   not_input_topography,
                    resize=None, 
                    crop=None,
                    batch_size=1, 
                    num_workers=0):
     
-    dataset_train = FloodDataset(dataset_subset, dataset_dem, "train", path, resize, crop)
-    dataset_val = FloodDataset(dataset_subset, dataset_dem, "validation", path, resize, crop)
-    dataset_test = FloodDataset(dataset_subset, dataset_dem, "test", path, resize, crop)
+    dataset_train = FloodDataset(dataset_subset, dataset_dem, "train", path, not_input_topography, resize, crop)
+    dataset_val = FloodDataset(dataset_subset, dataset_dem, "validation", path, not_input_topography, resize, crop)
+    dataset_test = FloodDataset(dataset_subset, dataset_dem, "test", path, not_input_topography, resize, crop)
     
     train_loader = DataLoader(dataset=dataset_train,
                               batch_size=batch_size,
@@ -37,11 +38,12 @@ def create_dataset(dataset_subset, # "usa", "india", "hurricane-harvey", "hurric
     return train_loader, val_loader, test_loader
     
 class FloodDataset(Dataset):
-    def __init__(self, dataset_subset, dataset_dem, split, path, resize, crop):
+    def __init__(self, dataset_subset, dataset_dem, split, path, not_input_topography, resize, crop):
         self.data_files = determine_dataset(dataset_subset, dataset_dem, crop)[split]
         self.resize = resize
         self.path = path
         self.crop = crop
+        self.not_input_topography = not_input_topography
 
     def __getitem__(self, index):
         image = self.data_files[index]
@@ -68,7 +70,8 @@ class FloodDataset(Dataset):
             start_col = col_index * cols_size
             input_image = input_image[:, start_row:start_row + rows_size, start_col:start_col + cols_size]
             output_image = output_image[:, start_row:start_row + rows_size, start_col:start_col + cols_size]
-            
+        if self.not_input_topography:
+            input_image = input_image[:3, :, :]
         return input_image, output_image
 
     def __len__(self):

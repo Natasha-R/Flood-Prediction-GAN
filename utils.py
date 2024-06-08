@@ -33,14 +33,14 @@ def define_lambda_rule(num_epochs):
         return learning_rate
     return lambda_rule
         
-def print_setup(continue_training, num_epochs, starting_epoch, not_input_topography, dataset_subset, dataset_dem, resize, crop, save_model_interval, save_images_interval):
-        print(f"\n{'Continuing' if continue_training is True else 'Beginning'} training:")
+def print_setup(model, continue_training, num_epochs, starting_epoch, not_input_topography, dataset_subset, dataset_dem, resize, crop, save_model_interval, save_images_interval):
+        print(f"\n{'Continuing' if continue_training is True else 'Beginning'} training {model}:")
         print(f"{num_epochs} epochs")
         print(f"Starting from epoch {starting_epoch}")
         print(f"Additional topographical factors will {'NOT ' if not_input_topography else ''}be input to the model")
         print(f"Dataset: '{dataset_subset}' '{dataset_dem} DEM'")
         print(f"Data resized to {resize} pixels with {crop} crops")
-        print(f"Models saved every {save_model_interval} epochs")
+        print(f"Model saved every {save_model_interval} epochs")
         print(f"Sample generator output images saved every {save_images_interval} epochs\n")
         
 def create_path(save, model, data_path, split, dataset_subset, dataset_dem, not_input_topography, resize, crop, epoch):
@@ -64,7 +64,7 @@ def initialise_loss_storage(model, overall):
                 f"{pre_string}losses_generator_synthetic":[],
                 f"{pre_string}l1_losses_generator_synthetic":[]}
     
-    elif model.lower()=="cyclegan":
+    elif model.lower()=="cyclegan" or model.lower()=="attentiongan":
         return {f"{pre_string}losses_generator_post":[],
                 f"{pre_string}losses_generator_pre":[],
                 f"{pre_string}losses_pre_to_post_cycle":[],
@@ -73,9 +73,6 @@ def initialise_loss_storage(model, overall):
                 f"{pre_string}losses_discriminator_post_real":[],
                 f"{pre_string}losses_discriminator_pre_synthetic":[],
                 f"{pre_string}losses_discriminator_post_synthetic":[]}
-    
-    elif model.lower()=="attentiongan":
-        None
         
     else:
         raise NotImplementedError("Model must be one of: Pix2Pix, CycleGAN or AttentionGAN")
@@ -85,11 +82,8 @@ def print_losses(model, epoch, all_losses):
     if model.lower()=="pix2pix":
         print(f"{epoch=} | Discriminator real loss = {all_losses['all_losses_discriminator_real'][-1]:.2f} | Discriminator synthetic loss = {all_losses['all_losses_discriminator_synthetic'][-1]:.2f} | Generator synthetic loss = {all_losses['all_losses_generator_synthetic'][-1]:.2f} | L1 Generator loss = {all_losses['all_l1_losses_generator_synthetic'][-1]:.2f}")
     
-    elif model.lower()=="cyclegan":
+    elif model.lower()=="cyclegan" or model.lower()=="attentiongan":
         print(f"{epoch=} | Generator post image loss = {all_losses['all_losses_generator_post'][-1]:.2f} | Generator pre image loss = {all_losses['all_losses_generator_pre'][-1]:.2f} | Pre to post cycle loss = {all_losses['all_losses_pre_to_post_cycle'][-1]:.2f} | Post to pre cycle loss = {all_losses['all_losses_post_to_pre_cycle'][-1]:.2f} | Discriminator pre real image loss = {all_losses['all_losses_discriminator_pre_real'][-1]:.2f} | Discriminator post real image loss = {all_losses['all_losses_discriminator_post_real'][-1]:.2f} | Discriminator pre synthetic image loss = {all_losses['all_losses_discriminator_pre_synthetic'][-1]:.2f} | Discriminator post synthetic image loss = {all_losses['all_losses_discriminator_post_synthetic'][-1]:.2f}")
-        
-    elif model.lower()=="attentiongan":
-        None
         
     else:
         raise NotImplementedError("Model must be one of: Pix2Pix, CycleGAN or AttentionGAN")

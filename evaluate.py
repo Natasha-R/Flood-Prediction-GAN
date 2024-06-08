@@ -37,14 +37,16 @@ def generate_images(dataset_subset,
             generator = models.Pix2PixGenerator(input_channels=input_channels).to(device)
             generator.load_state_dict(saved_model["generator"])
             generators = [generator.eval()]
-        elif model.lower() == "cyclegan":
-            pre_to_post_generator = models.CycleGANGenerator(input_channels=input_channels).to(device)
-            post_to_pre_generator = models.CycleGANGenerator(input_channels=input_channels).to(device)
+        elif model.lower() == "cyclegan" or model.lower()=="attentiongan":
+            if model.lower() == "cyclegan":
+                generator_architecture = models.CycleGANGenerator
+            else: # if model.lower()=="attentiongan":
+                generator_architecture = models.AttentionGANGenerator
+            pre_to_post_generator = generator_architecture(input_channels=input_channels).to(device)
+            post_to_pre_generator = generator_architecture(input_channels=input_channels).to(device)
             pre_to_post_generator.load_state_dict(saved_model["pre_to_post_generator"])
             post_to_pre_generator.load_state_dict(saved_model["post_to_pre_generator"])
             generators = [pre_to_post_generator.eval(), post_to_pre_generator.eval()]
-        elif model.lower() == "attentiongan":
-            None
         else:
             raise NotImplementedError("Model must be one of: Pix2Pix, CycleGAN or AttentionGAN")
         
@@ -52,16 +54,14 @@ def generate_images(dataset_subset,
     elif trained_model:
         if model.lower()=="pix2pix":
             generators = [trained_model.eval()]
-        elif model.lower() == "cyclegan":
+        elif model.lower() == "cyclegan" or model.lower() == "attentiongan":
             pre_to_post_generator = trained_model[0].eval()
             post_to_pre_generator = trained_model[1].eval()
             generators = [pre_to_post_generator, post_to_pre_generator]
-        elif model.lower() == "attentiongan":
-            None
     else:
         NotImplementedError("Either the path to a saved model, or a trained model, must be provided")
         
-    train_loader, val_loader, _ = data.create_dataset(dataset_subset, dataset_dem, data_path, not_input_topography, resize=resize, crop=crop)
+    train_loader, val_loader, _ = data.create_dataset(dataset_subset, dataset_dem, data_path, not_input_topography, resize, crop)
     if num_images > min(len(train_loader), len(val_loader)):
         raise ValueError(f"Enter num_images as {min(len(train_loader), len(val_loader))} or fewer")
 
@@ -78,14 +78,14 @@ def generate_images(dataset_subset,
                 
                 for i, (input_stack, output_image) in enumerate(loader):
                     if gen_index==1: ## if generator is post-to-pre then flip the inputs
+                        store_output = output_image.clone()
                         if not_input_topography:
-                            store_output = output_image.clone()
                             output_image = input_stack.to(device)
                             input_stack = store_output.to(device)
                         else:
                             topography = input_stack[:, 3:, :, :].detach().clone()
-                            input_stack = torch.cat((output_image, topography), dim=1).to(device)
                             output_image = input_stack[:, :3, :, :].to(device)
+                            input_stack = torch.cat((store_output, topography), dim=1).to(device)
                     else:
                         input_stack = input_stack.to(device)
                         output_image = output_image.to(device)
@@ -101,6 +101,8 @@ def generate_images(dataset_subset,
                 fig.tight_layout() 
                 if "cyclegan" in model.lower():
                     model = f"{index_to_generator[gen_index]}_cyclegan"
+                elif "attentiongan" in model.lower():
+                    model = f"{index_to_generator[gen_index]}_attentiongan"
                 images_path = utils.create_path("image", model.lower(), data_path, split, dataset_subset, dataset_dem, not_input_topography, resize, crop, epoch)
                 print(f"Saving {split} images to {images_path}")
                 fig.savefig(images_path)
@@ -115,7 +117,7 @@ def print_losses(dataset_subset,
                  crop,
                  saved_model_path):
     
-    train_loader, val_loader, _ = data.create_dataset(dataset_subset, dataset_dem, data_path, not_input_topography, resize=resize, crop=crop)
+    train_loader, val_loader, _ = data.create_dataset(dataset_subset, dataset_dem, data_path, not_input_topography, resize, crop)
     saved_model = torch.load(saved_model_path)
     epoch = saved_model["starting_epoch"]
     if not_input_topography:
@@ -166,11 +168,18 @@ def print_losses(dataset_subset,
                 print(f"\nLosses on the {loader_name} dataset:")
                 utils.print_losses("pix2pix", epoch, all_losses)
                 
-    elif model.lower() == "cyclegan":
-        pre_to_post_generator = models.CycleGANGenerator(input_channels=input_channels).to(device)
-        post_to_pre_generator = models.CycleGANGenerator(input_channels=input_channels).to(device)
-        pre_discriminator = models.CycleGANDiscriminator(input_channels=input_channels).to(device)
-        post_discriminator = models.CycleGANDiscriminator(input_channels=input_channels).to(device)
+    elif model.lower() == "cyclegan" or model.lower()=="attentiongan":
+        
+        if model.lower() == "cyclegan":
+            generator_architecture = models.CycleGANGenerator
+            discriminator_architecture = models.CycleGANDiscriminator
+        else: # if model.lower()=="attentiongan":
+            generator_architecture = models.AttentionGANGenerator
+            discriminator_architecture = models.AttentionGANDiscriminator
+        pre_to_post_generator = generator_architecture(input_channels=input_channels).to(device)
+        post_to_pre_generator = generator_architecture(input_channels=input_channels).to(device)
+        pre_discriminator = discriminator_architecture(input_channels=input_channels).to(device)
+        post_discriminator = discriminator_architecture(input_channels=input_channels).to(device)
         pre_to_post_generator.load_state_dict(saved_model["pre_to_post_generator"])
         post_to_pre_generator.load_state_dict(saved_model["post_to_pre_generator"])
         pre_discriminator.load_state_dict(saved_model["pre_discriminator"])
@@ -183,8 +192,8 @@ def print_losses(dataset_subset,
         cycle_loss = nn.L1Loss()
         
         for loader_name, loader in zip(["train", "validation"], [train_loader, val_loader]):
-            losses = utils.initialise_loss_storage("CycleGAN", overall=False)
-            all_losses = utils.initialise_loss_storage("CycleGAN", overall=True)
+            losses = utils.initialise_loss_storage(model, overall=False)
+            all_losses = utils.initialise_loss_storage(model, overall=True)
             with torch.no_grad():
                 torch.manual_seed(47)
                 for input_stack, output_image in loader:
@@ -229,11 +238,8 @@ def print_losses(dataset_subset,
                 for key in all_losses.keys():
                     all_losses[key].append(np.mean(losses[key[4:]]))
                 print(f"\nLosses on the {loader_name} dataset:")
-                utils.print_losses("cyclegan", epoch, all_losses)
+                utils.print_losses(model, epoch, all_losses)
                 
-    elif model.lower() == "attentiongan":
-        None
-        
     else:
         raise NotImplementedError("Model must be one of: Pix2Pix, CycleGAN or AttentionGAN")
         

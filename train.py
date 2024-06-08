@@ -18,24 +18,32 @@ compile_model = False
 #if torch.__version__[0] == "2" and os.name != "nt":
 #    compile_model = True
 
-def train_pix2pix(dataset_subset, 
-                  dataset_dem, 
-                  data_path,
-                  num_epochs, 
-                  not_input_topography,
-                  resize,
-                  crop,
-                  save_model_interval,
-                  save_images_interval,
-                  verbose,
-                  continue_training, 
-                  saved_model_path):
+def train_conditional(model,
+                      dataset_subset, 
+                      dataset_dem, 
+                      data_path,
+                      num_epochs, 
+                      not_input_topography,
+                      resize,
+                      crop,
+                      save_model_interval,
+                      save_images_interval,
+                      verbose,
+                      continue_training, 
+                      saved_model_path):
 
     ### set-up #######
     
     if verbose:
-        print(f"\nSetting up the Pix2Pix model...") 
+        print(f"\nSetting up the {model} model...") 
 
+    if continue_training:
+        saved_model = torch.load(saved_model_path)
+        model = saved_model["model"]
+        num_epochs = saved_model["num_epochs"]
+        all_losses = saved_model["all_losses"]
+        not_input_topography = saved_model["not_input_topography"]
+        
     if not_input_topography:
         input_channels = 3
     else: # if input_topography
@@ -59,16 +67,11 @@ def train_pix2pix(dataset_subset,
     scheduler_generator = lr_scheduler.LambdaLR(optimizer_generator, lr_lambda=lambda_rule) 
                   
     starting_epoch = 1
-    all_losses = utils.initialise_loss_storage("Pix2Pix", overall=True)
+    all_losses = utils.initialise_loss_storage(model, overall=True)
 
     if continue_training:
-        saved_model = torch.load(saved_model_path)
-            
+        
         starting_epoch = saved_model["starting_epoch"]
-        num_epochs = saved_model["num_epochs"]
-        all_losses = saved_model["all_losses"]
-        resize = saved_model["resize"]
-        not_input_topography = saved_model["not_input_topography"]
         
         discriminator.load_state_dict(saved_model["discriminator"])
         generator.load_state_dict(saved_model["generator"])
@@ -79,16 +82,16 @@ def train_pix2pix(dataset_subset,
         scheduler_discriminator.load_state_dict(saved_model["scheduler_discriminator"])
         scheduler_generator.load_state_dict(saved_model["scheduler_generator"])
 
-    train_loader, val_loader, _ = data.create_dataset(dataset_subset, dataset_dem, path=data_path, not_input_topography=not_input_topography, resize=resize, crop=crop)
+    train_loader, val_loader, _ = data.create_dataset(dataset_subset, dataset_dem, data_path, not_input_topography, resize, crop)
     
     if verbose:
-        utils.print_setup(continue_training, num_epochs, starting_epoch, not_input_topography, dataset_subset, dataset_dem, resize, crop, save_model_interval, save_images_interval)
+        utils.print_setup(model, continue_training, num_epochs, starting_epoch, not_input_topography, dataset_subset, dataset_dem, resize, crop, save_model_interval, save_images_interval)
         
     ### training #######
     
     for epoch in range(starting_epoch, num_epochs + 1):
         
-        losses = utils.initialise_loss_storage("Pix2Pix", overall=False)
+        losses = utils.initialise_loss_storage(model, overall=False)
 
         discriminator.train()
         generator.train()
@@ -145,13 +148,13 @@ def train_pix2pix(dataset_subset,
             all_losses[key].append(np.mean(losses[key[4:]]))
         
         if verbose:
-            utils.print_losses("Pix2Pix", epoch, all_losses)
+            utils.print_losses(model, epoch, all_losses)
 
         if save_model_interval != 0 and ((epoch % save_model_interval) == 0):
             saved_model = {
+                    "model": model,
                     "starting_epoch": epoch + 1,
                     "num_epochs": num_epochs,
-                    "resize": resize,
                     "not_input_topography": not_input_topography,
                     "discriminator": discriminator.state_dict(),
                     "generator": generator.state_dict(),
@@ -161,42 +164,57 @@ def train_pix2pix(dataset_subset,
                     "scheduler_generator": scheduler_generator.state_dict(),
                     "all_losses": all_losses,
                     }
-            model_path = utils.create_path("model", "pix2pix", data_path, "model", dataset_subset, dataset_dem, not_input_topography, resize, crop, epoch)
-            print(f"Saving model to {model_path}")
+            model_path = utils.create_path("model", model, data_path, "model", dataset_subset, dataset_dem, not_input_topography, resize, crop, epoch)
+            print(f"Saving {model} model to {model_path}")
             torch.save(saved_model, model_path)
 
         if save_images_interval != 0 and ((epoch % save_images_interval) == 0):
-            evaluate.generate_images(dataset_subset, dataset_dem, data_path, "pix2pix", not_input_topography, resize, crop, 5, trained_model=generator, epoch=epoch)
+            evaluate.generate_images(dataset_subset, dataset_dem, data_path, model, not_input_topography, resize, crop, 5, trained_model=generator, epoch=epoch)
             
             
-def train_cyclegan(dataset_subset, 
-                  dataset_dem, 
-                  data_path,
-                  num_epochs, 
-                  not_input_topography,
-                  resize,
-                  crop,
-                  save_model_interval,
-                  save_images_interval,
-                  verbose,
-                  continue_training, 
-                  saved_model_path):
+def train_cycle(model,
+                dataset_subset, 
+                dataset_dem, 
+                data_path,
+                num_epochs, 
+                not_input_topography,
+                resize,
+                crop,
+                save_model_interval,
+                save_images_interval,
+                verbose,
+                continue_training, 
+                saved_model_path):
 
     ### set-up #######
 
     if verbose:
-        print(f"\nSetting up the CycleGAN model...") 
+        print(f"\nSetting up the {model} model...") 
 
+    if continue_training:
+        saved_model = torch.load(saved_model_path)
+        model = saved_model["model"]
+        num_epochs = saved_model["num_epochs"]
+        all_losses = saved_model["all_losses"]
+        not_input_topography = saved_model["not_input_topography"]
+        
     if not_input_topography:
         input_channels = 3
     else: # if input_topography
         input_channels = 9
         
     torch.manual_seed(47)
-    pre_to_post_generator = models.CycleGANGenerator(input_channels=input_channels).apply(utils.initialise_weights).to(device)
-    post_to_pre_generator = models.CycleGANGenerator(input_channels=input_channels).apply(utils.initialise_weights).to(device)
-    pre_discriminator =  models.CycleGANDiscriminator(input_channels=input_channels).apply(utils.initialise_weights).to(device)
-    post_discriminator = models.CycleGANDiscriminator(input_channels=input_channels).apply(utils.initialise_weights).to(device)
+    if model.lower() == "cyclegan":
+        generator_architecture = models.CycleGANGenerator
+        discriminator_architecture = models.CycleGANDiscriminator
+    else: # if model.lower()=="attentiongan":
+        generator_architecture = models.AttentionGANGenerator
+        discriminator_architecture = models.AttentionGANDiscriminator
+        
+    pre_to_post_generator = generator_architecture(input_channels=input_channels).apply(utils.initialise_weights).to(device)
+    post_to_pre_generator = generator_architecture(input_channels=input_channels).apply(utils.initialise_weights).to(device)
+    pre_discriminator = discriminator_architecture(input_channels=input_channels).apply(utils.initialise_weights).to(device)
+    post_discriminator = discriminator_architecture(input_channels=input_channels).apply(utils.initialise_weights).to(device)
 
     loss_func = nn.MSELoss()
     cycle_loss = nn.L1Loss()
@@ -210,17 +228,12 @@ def train_cyclegan(dataset_subset,
     scheduler_discriminators = lr_scheduler.LambdaLR(optimizer_discriminators, lr_lambda=lambda_rule)
 
     starting_epoch = 1
-    all_losses = utils.initialise_loss_storage("CycleGAN", overall=True)
+    all_losses = utils.initialise_loss_storage(model, overall=True)
 
     if continue_training:
-        saved_model = torch.load(saved_model_path)
-
+        
         starting_epoch = saved_model["starting_epoch"]
-        num_epochs = saved_model["num_epochs"]
-        all_losses = saved_model["all_losses"]
-        resize = saved_model["resize"]
-        not_input_topography = saved_model["not_input_topography"]
-
+        
         pre_to_post_generator.load_state_dict(saved_model["pre_to_post_generator"])
         post_to_pre_generator.load_state_dict(saved_model["post_to_pre_generator"])
         pre_discriminator.load_state_dict(saved_model["pre_discriminator"])
@@ -232,18 +245,18 @@ def train_cyclegan(dataset_subset,
         scheduler_generators.load_state_dict(saved_model["scheduler_generators"])
         scheduler_discriminators.load_state_dict(saved_model["scheduler_discriminators"])
 
-    train_loader, val_loader, _ = data.create_dataset(dataset_subset, dataset_dem, data_path, not_input_topography, resize=resize, crop=crop)
+    train_loader, val_loader, _ = data.create_dataset(dataset_subset, dataset_dem, data_path, not_input_topography, resize, crop)
     pre_images_buffer = []
     post_images_buffer = []
 
     if verbose:
-        utils.print_setup(continue_training, num_epochs, starting_epoch, not_input_topography, dataset_subset, dataset_dem, resize, crop, save_model_interval, save_images_interval)
+        utils.print_setup(model, continue_training, num_epochs, starting_epoch, not_input_topography, dataset_subset, dataset_dem, resize, crop, save_model_interval, save_images_interval)
 
     ### training #######
 
     for epoch in range(starting_epoch, num_epochs + 1):
 
-        losses = utils.initialise_loss_storage("CycleGAN", overall=False)
+        losses = utils.initialise_loss_storage(model, overall=False)
 
         pre_to_post_generator.train()
         post_to_pre_generator.train()
@@ -328,13 +341,13 @@ def train_cyclegan(dataset_subset,
             all_losses[key].append(np.mean(losses[key[4:]]))
 
         if verbose:
-            utils.print_losses("CycleGAN", epoch, all_losses)
+            utils.print_losses(model, epoch, all_losses)
 
         if save_model_interval != 0 and ((epoch % save_model_interval) == 0):
             saved_model = {
+                    "model": model,
                     "starting_epoch": epoch + 1,
                     "num_epochs": num_epochs,
-                    "resize": resize,
                     "pre_to_post_generator": pre_to_post_generator.state_dict(),
                     "post_to_pre_generator": post_to_pre_generator.state_dict(),
                     "pre_discriminator": pre_discriminator.state_dict(),
@@ -346,12 +359,12 @@ def train_cyclegan(dataset_subset,
                     "all_losses": all_losses,
                     "not_input_topography": not_input_topography,
                     }
-            model_path = utils.create_path("model", "cyclegan", data_path, "model", dataset_subset, dataset_dem, not_input_topography, resize, crop, epoch)
+            model_path = utils.create_path("model", model, data_path, "model", dataset_subset, dataset_dem, not_input_topography, resize, crop, epoch)
             print(f"Saving model to {model_path}")
             torch.save(saved_model, model_path)
 
         if save_images_interval != 0 and ((epoch % save_images_interval) == 0):
-            evaluate.generate_images(dataset_subset, dataset_dem, data_path, "cyclegan", not_input_topography, resize, crop, 5, trained_model=[pre_to_post_generator, post_to_pre_generator], epoch=epoch)            
+            evaluate.generate_images(dataset_subset, dataset_dem, data_path, model, not_input_topography, resize, crop, 5, trained_model=[pre_to_post_generator, post_to_pre_generator], epoch=epoch)            
             
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train the Pix2Pix, CycleGAN or AttentionGAN model on the flood images dataset")
@@ -365,9 +378,9 @@ if __name__ == "__main__":
     parser.add_argument("--crop", type=int, default=None, help="Crop each image into the given number of images. The resize is applied before the crop")
     parser.add_argument("--save_model_interval", type=int, default=100, help="Save the model every given number of epochs. Set to 0 if you don't want to save the model")
     parser.add_argument("--save_images_interval", type=int, default=100, help="Save some sample generator outputs every given number of epochs Set to 0 if you don't want to save images")
+    parser.add_argument("--verbose", default=False, action="store_true", help="Print out the losses on every epoch")
     parser.add_argument("--continue_training", default=False, action="store_true", help="Whether training should be resumed from a pre-trained model")
     parser.add_argument("--saved_model_path", default=None, help="If continue_training==True, then this path should point to the pre-trained model")
-    parser.add_argument("--verbose", default=False, action="store_true", help="Print out the losses on every epoch")
     
     args = parser.parse_args()
     
@@ -378,32 +391,8 @@ if __name__ == "__main__":
             raise FileNotFoundError("Saved model not found. Check the path to the saved model.")
     
     if args.model.lower() == "pix2pix":
-        train_pix2pix(args.dataset_subset, 
-                      args.dataset_dem, 
-                      args.data_path,
-                      args.num_epochs, 
-                      args.not_input_topography,
-                      args.resize,
-                      args.crop,
-                      args.save_model_interval,
-                      args.save_images_interval,
-                      args.verbose,
-                      args.continue_training, 
-                      args.saved_model_path)
-    elif args.model.lower() == "cyclegan":
-        train_cyclegan(args.dataset_subset, 
-                       args.dataset_dem, 
-                       args.data_path,
-                       args.num_epochs, 
-                       args.not_input_topography,
-                       args.resize,
-                       args.crop,
-                       args.save_model_interval,
-                       args.save_images_interval,
-                       args.verbose,
-                       args.continue_training, 
-                       args.saved_model_path)
-    elif args.model.lower() == "attentiongan":
-        None
+        train_conditional(**vars(args))
+    elif args.model.lower() == "cyclegan" or args.model.lower() == "attentiongan":
+        train_cycle(**vars(args))
     else:
         raise NotImplementedError("Model must be one of: Pix2Pix, CycleGAN or AttentionGAN")

@@ -30,7 +30,8 @@ def train_conditional(model,
                       save_images_interval,
                       verbose,
                       continue_training, 
-                      saved_model_path):
+                      saved_model_path,
+                      add_identity_loss):
 
     ### set-up #######
     
@@ -85,7 +86,7 @@ def train_conditional(model,
     train_loader, val_loader, _ = data.create_dataset(dataset_subset, dataset_dem, data_path, not_input_topography, resize, crop)
     
     if verbose:
-        utils.print_setup(model, continue_training, num_epochs, starting_epoch, not_input_topography, dataset_subset, dataset_dem, resize, crop, save_model_interval, save_images_interval)
+        utils.print_setup(model, continue_training, num_epochs, starting_epoch, not_input_topography, dataset_subset, dataset_dem, resize, crop, save_model_interval, save_images_interval, add_identity_loss)
         
     ### training #######
     
@@ -164,12 +165,12 @@ def train_conditional(model,
                     "scheduler_generator": scheduler_generator.state_dict(),
                     "all_losses": all_losses,
                     }
-            model_path = utils.create_path("model", model, data_path, "model", dataset_subset, dataset_dem, not_input_topography, resize, crop, epoch)
+            model_path = utils.create_path("model", model, data_path, "model", dataset_subset, dataset_dem, not_input_topography, resize, crop, epoch, add_identity_loss)
             print(f"Saving {model} model to {model_path}")
             torch.save(saved_model, model_path)
 
         if save_images_interval != 0 and ((epoch % save_images_interval) == 0):
-            evaluate.generate_images(dataset_subset, dataset_dem, data_path, model, not_input_topography, resize, crop, 5, trained_model=generator, epoch=epoch)
+            evaluate.generate_images(dataset_subset, dataset_dem, data_path, model, resize, crop, 5, add_identity_loss=add_identity_loss, not_input_topography=not_input_topography, trained_model=generator, epoch=epoch)
             
             
 def train_cycle(model,
@@ -184,7 +185,8 @@ def train_cycle(model,
                 save_images_interval,
                 verbose,
                 continue_training, 
-                saved_model_path):
+                saved_model_path,
+                add_identity_loss):
 
     ### set-up #######
 
@@ -197,6 +199,7 @@ def train_cycle(model,
         num_epochs = saved_model["num_epochs"]
         all_losses = saved_model["all_losses"]
         not_input_topography = saved_model["not_input_topography"]
+        add_identity_loss = saved_model["add_identity_loss"]
         
     if not_input_topography:
         input_channels = 3
@@ -218,6 +221,7 @@ def train_cycle(model,
 
     loss_func = nn.MSELoss()
     cycle_loss = nn.L1Loss()
+    identity_loss = nn.L1Loss()
 
     optimizer_generators = torch.optim.Adam(itertools.chain(pre_to_post_generator.parameters(), post_to_pre_generator.parameters()), 
                                             lr=0.0002, betas=(0.5, 0.999))
@@ -228,7 +232,7 @@ def train_cycle(model,
     scheduler_discriminators = lr_scheduler.LambdaLR(optimizer_discriminators, lr_lambda=lambda_rule)
 
     starting_epoch = 1
-    all_losses = utils.initialise_loss_storage(model, overall=True)
+    all_losses = utils.initialise_loss_storage(model, overall=True, add_identity_loss=add_identity_loss)
 
     if continue_training:
         
@@ -250,13 +254,13 @@ def train_cycle(model,
     post_images_buffer = []
 
     if verbose:
-        utils.print_setup(model, continue_training, num_epochs, starting_epoch, not_input_topography, dataset_subset, dataset_dem, resize, crop, save_model_interval, save_images_interval)
+        utils.print_setup(model, continue_training, num_epochs, starting_epoch, not_input_topography, dataset_subset, dataset_dem, resize, crop, save_model_interval, save_images_interval, add_identity_loss)
 
     ### training #######
 
     for epoch in range(starting_epoch, num_epochs + 1):
 
-        losses = utils.initialise_loss_storage(model, overall=False)
+        losses = utils.initialise_loss_storage(model, overall=False, add_identity_loss=add_identity_loss)
 
         pre_to_post_generator.train()
         post_to_pre_generator.train()
@@ -278,8 +282,7 @@ def train_cycle(model,
                 synthetic_post_image = torch.cat((synthetic_post_image, topography.clone().to(device)), dim=1)
                 synthetic_pre_image = torch.cat((synthetic_pre_image, topography.clone().to(device)), dim=1)
             recreated_post_image = pre_to_post_generator(synthetic_pre_image)  
-            recreated_pre_image = post_to_pre_generator(synthetic_post_image)            
-                                             
+            recreated_pre_image = post_to_pre_generator(synthetic_post_image)                              
             # train the generators
             for parameter in pre_discriminator.parameters(): 
                 parameter.requires_grad = False
@@ -287,6 +290,11 @@ def train_cycle(model,
                 parameter.requires_grad = False
             optimizer_generators.zero_grad()
             
+            identity_loss_post = 0
+            identity_loss_pre = 0
+            if add_identity_loss:
+                identity_loss_post = identity_loss(pre_to_post_generator(real_post_image), real_post_image[:, :3, :, :]) * 5
+                identity_loss_pre = identity_loss(post_to_pre_generator(real_pre_image), real_pre_image[:, :3, :, :]) * 5
             discriminator_prediction_shape = post_discriminator(synthetic_post_image).shape
             post_generator_loss = loss_func(post_discriminator(synthetic_post_image), 
                                             torch.full(discriminator_prediction_shape, 1., dtype=torch.float32, device=device))
@@ -294,7 +302,7 @@ def train_cycle(model,
                                            torch.full(discriminator_prediction_shape, 1., dtype=torch.float32, device=device))
             pre_to_post_cycle_loss = cycle_loss(recreated_pre_image, real_pre_image[:, :3, :, :]) * 10
             post_to_pre_cycle_loss = cycle_loss(recreated_post_image, real_post_image[:, :3, :, :]) * 10                                       
-            generator_loss = post_generator_loss + pre_generator_loss + pre_to_post_cycle_loss + post_to_pre_cycle_loss
+            generator_loss = post_generator_loss + pre_generator_loss + pre_to_post_cycle_loss + post_to_pre_cycle_loss + identity_loss_post + identity_loss_pre
             generator_loss.backward()
             optimizer_generators.step()
 
@@ -331,6 +339,9 @@ def train_cycle(model,
             losses["losses_discriminator_post_real"].append(loss_discriminator_real_post.detach().cpu().item())
             losses["losses_discriminator_pre_synthetic"].append(loss_discriminator_synthetic_pre.detach().cpu().item())
             losses["losses_discriminator_post_synthetic"].append(loss_discriminator_synthetic_post.detach().cpu().item())
+            if add_identity_loss:
+                losses["losses_identity_post"].append(identity_loss_post.detach().cpu().item())
+                losses["losses_identity_pre"].append(identity_loss_pre.detach().cpu().item())
 
         scheduler_generators.step()
         scheduler_discriminators.step()
@@ -341,7 +352,7 @@ def train_cycle(model,
             all_losses[key].append(np.mean(losses[key[4:]]))
 
         if verbose:
-            utils.print_losses(model, epoch, all_losses)
+            utils.print_losses(model, epoch, all_losses, add_identity_loss)
 
         if save_model_interval != 0 and ((epoch % save_model_interval) == 0):
             saved_model = {
@@ -358,13 +369,14 @@ def train_cycle(model,
                     "scheduler_discriminators": scheduler_discriminators.state_dict(),
                     "all_losses": all_losses,
                     "not_input_topography": not_input_topography,
+                    "add_identity_loss": add_identity_loss,
                     }
-            model_path = utils.create_path("model", model, data_path, "model", dataset_subset, dataset_dem, not_input_topography, resize, crop, epoch)
+            model_path = utils.create_path("model", model, data_path, "model", dataset_subset, dataset_dem, not_input_topography, resize, crop, epoch, add_identity_loss)
             print(f"Saving model to {model_path}")
             torch.save(saved_model, model_path)
 
         if save_images_interval != 0 and ((epoch % save_images_interval) == 0):
-            evaluate.generate_images(dataset_subset, dataset_dem, data_path, model, not_input_topography, resize, crop, 5, trained_model=[pre_to_post_generator, post_to_pre_generator], epoch=epoch)            
+            evaluate.generate_images(dataset_subset, dataset_dem, data_path, model, resize, crop, 5, add_identity_loss=add_identity_loss, not_input_topography=not_input_topography, trained_model=[pre_to_post_generator, post_to_pre_generator], epoch=epoch)            
             
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train the Pix2Pix, CycleGAN or AttentionGAN model on the flood images dataset")
@@ -381,6 +393,7 @@ if __name__ == "__main__":
     parser.add_argument("--verbose", default=False, action="store_true", help="Print out the losses on every epoch")
     parser.add_argument("--continue_training", default=False, action="store_true", help="Whether training should be resumed from a pre-trained model")
     parser.add_argument("--saved_model_path", default=None, help="If continue_training==True, then this path should point to the pre-trained model")
+    parser.add_argument("--add_identity_loss", action="store_true", default=False, help="Add identity loss to the CycleGAN or AttentionGAN's loss function")
     
     args = parser.parse_args()
     

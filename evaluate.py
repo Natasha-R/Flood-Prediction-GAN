@@ -16,28 +16,30 @@ def generate_images(dataset_subset,
                     dataset_dem,
                     data_path,
                     model,
-                    not_input_topography,
                     resize,
                     crop,
                     num_images,
                     saved_model_path=None,
+                    add_identity_loss=False,
+                    not_input_topography=False,
                     trained_model=None,
                     epoch=None):
     
-    if not_input_topography:
-        input_channels = 3
-    else: # if input_topography
-        input_channels = 9
-        
     # loading a saved model from path
     if saved_model_path:
         saved_model = torch.load(saved_model_path)
         epoch = saved_model["starting_epoch"] - 1
+        not_input_topography = saved_model["not_input_topography"]
+        if not_input_topography:
+            input_channels = 3
+        else: # if input_topography
+            input_channels = 9
         if model.lower()=="pix2pix":
             generator = models.Pix2PixGenerator(input_channels=input_channels).to(device)
             generator.load_state_dict(saved_model["generator"])
             generators = [generator.eval()]
         elif model.lower() == "cyclegan" or model.lower()=="attentiongan":
+            add_identity_loss = saved_model["add_identity_loss"]
             if model.lower() == "cyclegan":
                 generator_architecture = models.CycleGANGenerator
             else: # if model.lower()=="attentiongan":
@@ -103,7 +105,7 @@ def generate_images(dataset_subset,
                     model = f"{index_to_generator[gen_index]}_cyclegan"
                 elif "attentiongan" in model.lower():
                     model = f"{index_to_generator[gen_index]}_attentiongan"
-                images_path = utils.create_path("image", model.lower(), data_path, split, dataset_subset, dataset_dem, not_input_topography, resize, crop, epoch)
+                images_path = utils.create_path("image", model.lower(), data_path, split, dataset_subset, dataset_dem, not_input_topography, resize, crop, epoch, add_identity_loss)
                 print(f"Saving {split} images to {images_path}")
                 fig.savefig(images_path)
                 plt.close();
@@ -112,14 +114,14 @@ def print_losses(dataset_subset,
                  dataset_dem,
                  data_path,
                  model,
-                 not_input_topography,
                  resize,
                  crop,
                  saved_model_path):
     
-    train_loader, val_loader, _ = data.create_dataset(dataset_subset, dataset_dem, data_path, not_input_topography, resize, crop)
     saved_model = torch.load(saved_model_path)
+    not_input_topography = saved_model["not_input_topography"]
     epoch = saved_model["starting_epoch"]
+    train_loader, val_loader, _ = data.create_dataset(dataset_subset, dataset_dem, data_path, not_input_topography, resize, crop)
     if not_input_topography:
         input_channels = 3
     else: # if input_topography
@@ -169,7 +171,6 @@ def print_losses(dataset_subset,
                 utils.print_losses("pix2pix", epoch, all_losses)
                 
     elif model.lower() == "cyclegan" or model.lower()=="attentiongan":
-        
         if model.lower() == "cyclegan":
             generator_architecture = models.CycleGANGenerator
             discriminator_architecture = models.CycleGANDiscriminator
@@ -184,16 +185,18 @@ def print_losses(dataset_subset,
         post_to_pre_generator.load_state_dict(saved_model["post_to_pre_generator"])
         pre_discriminator.load_state_dict(saved_model["pre_discriminator"])
         post_discriminator.load_state_dict(saved_model["post_discriminator"])
+        add_identity_loss = saved_model["add_identity_loss"]
         pre_to_post_generator.eval()
         post_to_pre_generator.eval()
         pre_discriminator.eval()
         post_discriminator.eval()
         loss_func = nn.MSELoss()
         cycle_loss = nn.L1Loss()
+        identity_loss = nn.L1Loss()
         
         for loader_name, loader in zip(["train", "validation"], [train_loader, val_loader]):
-            losses = utils.initialise_loss_storage(model, overall=False)
-            all_losses = utils.initialise_loss_storage(model, overall=True)
+            losses = utils.initialise_loss_storage(model, overall=False, add_identity_loss=add_identity_loss)
+            all_losses = utils.initialise_loss_storage(model, overall=True, add_identity_loss=add_identity_loss)
             with torch.no_grad():
                 torch.manual_seed(47)
                 for input_stack, output_image in loader:
@@ -208,7 +211,10 @@ def print_losses(dataset_subset,
                         synthetic_post_image = torch.cat((synthetic_post_image, topography.clone().to(device)), dim=1)
                         synthetic_pre_image = torch.cat((synthetic_pre_image, topography.clone().to(device)), dim=1)
                     recreated_post_image = pre_to_post_generator(synthetic_pre_image)  
-                    recreated_pre_image = post_to_pre_generator(synthetic_post_image)       
+                    recreated_pre_image = post_to_pre_generator(synthetic_post_image)
+                    if add_identity_loss:
+                        identity_loss_post = identity_loss(pre_to_post_generator(real_post_image), real_post_image[:, :3, :, :]) * 5
+                        identity_loss_pre = identity_loss(post_to_pre_generator(real_pre_image), real_pre_image[:, :3, :, :]) * 5
                     
                     discriminator_prediction_shape = post_discriminator(synthetic_post_image).shape
                     post_generator_loss = loss_func(post_discriminator(synthetic_post_image), 
@@ -234,11 +240,14 @@ def print_losses(dataset_subset,
                     losses["losses_discriminator_post_real"].append(loss_discriminator_real_post.detach().cpu().item())
                     losses["losses_discriminator_pre_synthetic"].append(loss_discriminator_synthetic_pre.detach().cpu().item())
                     losses["losses_discriminator_post_synthetic"].append(loss_discriminator_synthetic_post.detach().cpu().item())
+                    if add_identity_loss:
+                        losses["losses_identity_post"].append(identity_loss_post.detach().cpu().item())
+                        losses["losses_identity_pre"].append(identity_loss_pre.detach().cpu().item())
                     
                 for key in all_losses.keys():
                     all_losses[key].append(np.mean(losses[key[4:]]))
                 print(f"\nLosses on the {loader_name} dataset:")
-                utils.print_losses(model, epoch, all_losses)
+                utils.print_losses(model, epoch, all_losses, add_identity_loss)
                 
     else:
         raise NotImplementedError("Model must be one of: Pix2Pix, CycleGAN or AttentionGAN")
@@ -255,7 +264,6 @@ if __name__ == "__main__":
     parser.add_argument("--crop", type=int, default=None, help="Crop each image into the given number of images. The resize is applied before the crop")
     parser.add_argument("--print_losses", action="store_true", default=False, help="Print the model's losses on the dataset")
     parser.add_argument("--save_images", action="store_true", default=False, help="Save generated images")
-    parser.add_argument("--not_input_topography", action="store_true", default=False, help="The additional topographical factors (DEM/flow accumulation/distance to rivers/map) should NOT be input to the model")
     args = parser.parse_args()
     
     if not os.path.isfile(args.saved_model_path):
@@ -266,7 +274,6 @@ if __name__ == "__main__":
                         args.dataset_dem,
                         args.data_path,
                         args.model,
-                        args.not_input_topography,
                         args.resize,
                         args.crop,
                         args.num_images,
@@ -276,7 +283,6 @@ if __name__ == "__main__":
                      args.dataset_dem,
                      args.data_path,
                      args.model,
-                     args.not_input_topography,
                      args.resize,
                      args.crop,
                      args.saved_model_path)

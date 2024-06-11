@@ -120,7 +120,7 @@ def print_losses(dataset_subset,
     
     saved_model = torch.load(saved_model_path)
     not_input_topography = saved_model["not_input_topography"]
-    epoch = saved_model["starting_epoch"]
+    epoch = saved_model["starting_epoch"] - 1 
     train_loader, val_loader, _ = data.create_dataset(dataset_subset, dataset_dem, data_path, not_input_topography, resize, crop)
     if not_input_topography:
         input_channels = 3

@@ -384,7 +384,7 @@ if __name__ == "__main__":
     parser.add_argument("--dataset_subset", required=True, help="Specify the dataset subset, e.g. USA, India, Hurricane-Harvery")
     parser.add_argument("--dataset_dem", required=True, help="Specify whether the DEM used should be 'best' available or all the 'same'")
     parser.add_argument("--data_path", required=True, help="The path to the location of the data folder")
-    parser.add_argument("--num_epochs", type=int, required=True, help="Number of epochs to train for")
+    parser.add_argument("--num_epochs", type=int, default=10, help="Number of epochs to train for")
     parser.add_argument("--not_input_topography", default=False, action="store_true", help="The additional topographical factors (DEM/flow accumulation/distance to rivers/map) should NOT be input to the model")
     parser.add_argument("--resize", type=int, default=256, help="Resize the images to the given size. The resize is applied before the crop")
     parser.add_argument("--crop", type=int, default=None, help="Crop each image into the given number of images. The resize is applied before the crop")

@@ -110,7 +110,7 @@ def generate_images(dataset_subset,
                 fig.savefig(images_path)
                 plt.close();
             
-def print_losses(dataset_subset,
+def generate_losses(dataset_subset,
                  dataset_dem,
                  data_path,
                  model,
@@ -170,6 +170,44 @@ def print_losses(dataset_subset,
                 print(f"\nLosses on the {loader_name} dataset:")
                 utils.print_losses("pix2pix", epoch, all_losses)
                 
+        num_epochs = len(saved_model["all_losses"]["all_losses_discriminator_real"])
+        fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(10, 2 * 7))
+        for ax in axes.ravel():
+            ax.tick_params(axis="both", which="major", labelsize=14)
+            ax.set_xlabel("Epoch", fontsize=14)
+            ax.set_ylabel("Loss", fontsize=14)
+        axes[0].plot(range(1, num_epochs+1),
+                saved_model["all_losses"]["all_losses_discriminator_real"], 
+                c="#5F2959", 
+                label="Discriminator (real)",
+                marker="o",
+                linewidth=3,)
+        axes[0].plot(range(1, num_epochs+1),
+                saved_model["all_losses"]["all_losses_discriminator_synthetic"], 
+                c="#9F799B", 
+                label="Discriminator (synthetic)",
+                marker="o",
+                linewidth=3,)
+        axes[0].plot(range(1, num_epochs+1),
+                saved_model["all_losses"]["all_losses_generator_synthetic"],
+                c="#7BA4A9", 
+                label="Generator (synthetic)",
+                marker="o",
+                linewidth=3,)
+        axes[0].set_title("Pix2Pix Discriminator and Generator Losses", fontsize=15)
+        axes[0].legend(fontsize=14)
+        ax.plot(range(1, num_epochs+1),
+                saved_model["all_losses"]["all_l1_losses_generator_synthetic"],
+                c="black", 
+                label="L1 loss",
+                marker="o",
+                linewidth=3,)
+        ax.set_title("Pix2Pix L1 Losses", fontsize=15)
+        fig.tight_layout();
+        losses_path = utils.create_path("figure", model.lower(), data_path, "losses", dataset_subset, dataset_dem, not_input_topography, resize, crop, epoch, add_identity_loss=False)
+        print(f"\nSaving losses figure to {losses_path}")
+        fig.savefig(losses_path)
+
     elif model.lower() == "cyclegan" or model.lower()=="attentiongan":
         if model.lower() == "cyclegan":
             generator_architecture = models.CycleGANGenerator
@@ -248,7 +286,93 @@ def print_losses(dataset_subset,
                     all_losses[key].append(np.mean(losses[key[4:]]))
                 print(f"\nLosses on the {loader_name} dataset:")
                 utils.print_losses(model, epoch, all_losses, add_identity_loss)
-                
+
+        if add_identity_loss:
+            num_plots = 3
+        else:
+            num_plots = 2
+        num_epochs = len(saved_model["all_losses"]["all_losses_discriminator_pre_real"])
+        fig, axes = plt.subplots(nrows=num_plots, ncols=1, figsize=(10, num_plots * 7))
+        for ax in axes.ravel():
+            ax.tick_params(axis="both", which="major", labelsize=14)
+            ax.set_xlabel("Epoch", fontsize=14)
+            ax.set_ylabel("Loss", fontsize=14)
+        axes[0].plot(range(1, num_epochs+1),
+                saved_model["all_losses"]["all_losses_generator_pre"], 
+                c="#7BA4A9", 
+                label="Generator (pre)",
+                marker="o",
+                linewidth=3,)
+        axes[0].plot(range(1, num_epochs+1),
+                saved_model["all_losses"]["all_losses_generator_post"], 
+                c="#7BA4A9", 
+                label="Generator (post)",
+                linestyle=(0, (3, 1)),
+                marker="o",
+                linewidth=3,)
+        axes[0].plot(range(1, num_epochs+1),
+                saved_model["all_losses"]["all_losses_discriminator_pre_real"],
+                c="#5F2959", 
+                label="Discriminator (pre, real)",
+                marker="o",
+                linewidth=3,)
+        axes[0].plot(range(1, num_epochs+1),
+                saved_model["all_losses"]["all_losses_discriminator_post_real"],
+                c="#5F2959", 
+                linestyle=(0, (3, 1)),
+                label="Discriminator (post, real)",
+                marker="o",
+                linewidth=3,)
+        axes[0].plot(range(1, num_epochs+1),
+                saved_model["all_losses"]["all_losses_discriminator_pre_synthetic"],
+                c="#9F799B", 
+                label="Discriminator (pre, synthetic)",
+                marker="o",
+                linewidth=3,)
+        axes[0].plot(range(1, num_epochs+1),
+                saved_model["all_losses"]["all_losses_discriminator_post_synthetic"],
+                c="#9F799B", 
+                linestyle=(0, (3, 1)),
+                label="Discriminator (post, synthetic)",
+                marker="o",
+                linewidth=3,)
+        axes[0].set_title(f"{model} Discriminator and Generator Losses", fontsize=15)
+        axes[0].legend(fontsize=14)
+        axes[1].plot(range(1, num_epochs+1),
+                saved_model["all_losses"]["all_losses_pre_to_post_cycle"],
+                c="#7BA4A9", 
+                label="Pre to post cycle loss",
+                marker="o",
+                linewidth=3,)
+        axes[1].plot(range(1, num_epochs+1),
+                saved_model["all_losses"]["all_losses_post_to_pre_cycle"],
+                c="#9F799B", 
+                label="Post to pre cycle loss",
+                marker="o",
+                linewidth=3,)
+        axes[1].set_title(f"{model} Cycle Losses", fontsize=15);
+        axes[1].legend(fontsize=14)
+        if add_identity_loss:
+            axes[2].plot(range(1, num_epochs+1),
+                saved_model["all_losses"]["all_losses_identity_pre"],
+                c="black", 
+                label="Identity (pre)",
+                marker="o",
+                linewidth=3,)
+            axes[2].plot(range(1, num_epochs+1),
+                saved_model["all_losses"]["all_losses_identity_post"],
+                c="black", 
+                linestyle=(0, (3, 1)),
+                label="Identity (post)",
+                marker="o",
+                linewidth=3,)
+            axes[2].set_title(f"{model} Identity Losses", fontsize=15)
+            axes[2].legend(fontsize=14)
+        fig.tight_layout();
+        losses_path = utils.create_path("figure", model.lower(), data_path, "losses", dataset_subset, dataset_dem, not_input_topography, resize, crop, epoch, add_identity_loss)
+        print(f"\nSaving losses figure to {losses_path}")
+        fig.savefig(losses_path)
+
     else:
         raise NotImplementedError("Model must be one of: Pix2Pix, CycleGAN or AttentionGAN")
         
@@ -262,7 +386,7 @@ if __name__ == "__main__":
     parser.add_argument("--num_images", type=int, default=5, help="The number of images the generator should create")
     parser.add_argument("--resize", type=int, default=256, help="Resize the images to the given size. The resize is applied before the crop")
     parser.add_argument("--crop", type=int, default=None, help="Crop each image into the given number of images. The resize is applied before the crop")
-    parser.add_argument("--print_losses", action="store_true", default=False, help="Print the model's losses on the dataset")
+    parser.add_argument("--generate_losses", action="store_true", default=False, help="Print the model's losses on the dataset and save a plot of losses over time")
     parser.add_argument("--save_images", action="store_true", default=False, help="Save generated images")
     args = parser.parse_args()
     
@@ -278,8 +402,8 @@ if __name__ == "__main__":
                         args.crop,
                         args.num_images,
                         args.saved_model_path)
-    if args.print_losses:
-        print_losses(args.dataset_subset,
+    if args.generate_losses:
+        generate_losses(args.dataset_subset,
                      args.dataset_dem,
                      args.data_path,
                      args.model,

@@ -48,7 +48,7 @@ def print_setup(model, continue_training, num_epochs, starting_epoch, not_input_
         print(f"Sample generator output images saved every {save_images_interval} epochs\n")
         
 def create_path(save, model, data_path, split, dataset_subset, dataset_dem, not_input_topography, resize, crop, epoch, add_identity_loss):
-    if save=="image":
+    if save=="image" or save=="figure":
         file_type = ".png"
     elif save=="model":
         file_type = ".pth.tar"

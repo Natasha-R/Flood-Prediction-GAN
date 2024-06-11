@@ -161,10 +161,12 @@ class CycleGANDiscriminator(nn.Module):
 ##########################################################################################
 
 class AttentionGANGenerator(nn.Module):
-    def __init__(self, input_channels):
+    def __init__(self, input_channels, save_attention_mask=False):
         super(AttentionGANGenerator, self).__init__()
         
         self.input_channels = input_channels
+        self.save_attention_mask = save_attention_mask
+        self.last_attention_mask = None
         
         self.conv1 = nn.Conv2d(input_channels, 64, 7, 1, 0)
         self.conv1_norm = nn.InstanceNorm2d(64)
@@ -235,7 +237,7 @@ class AttentionGANGenerator(nn.Module):
         attention8 = attention[:, 7:8, :, :].repeat(1, 3, 1, 1)
         attention9 = attention[:, 8:9, :, :].repeat(1, 3, 1, 1)
         attention10 = attention[:, 9:10, :, :].repeat(1, 3, 1, 1) # background mask
-
+        
         # multiply each content mask to each foreground attention mask
         output1 = content1 * attention1
         output2 = content2 * attention2
@@ -248,6 +250,10 @@ class AttentionGANGenerator(nn.Module):
         output9 = content9 * attention9
         # multiply the original input image to the background mask
         output10 = input[:, :3, :, :] * attention10
+        
+        # save the attention mask
+        if self.save_attention_mask:
+            self.last_attention_mask = attention10[:, 0, :, :]
         
         # sum the results of all of the content masks multiplied to all of the attention masks
         overall_output = output1 + output2 + output3 + output4 + output5 + output6 + output7 + output8 + output9 + output10

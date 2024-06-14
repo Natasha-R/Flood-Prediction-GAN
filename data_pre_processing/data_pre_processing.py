@@ -18,9 +18,9 @@ gdal.UseExceptions()
 
 def create_metadata(path):
     # create a metadata csv describing the selected images
-    images_path = f"{path}/data/xBD/pngs_selected"
-    labels_path = f"{path}/data/xBD/labels_all/"
-    tiffs_path = f"{path}/data/xBD/tiffs_all/"
+    images_path = f"{path}/xBD/pngs_selected"
+    labels_path = f"{path}/xBD/labels_all/"
+    tiffs_path = f"{path}/xBD/tiffs_all/"
 
     selected_images = list({image.split("_")[0] + "_" + image.split("_")[1] for image in os.listdir(images_path)})
     disaster = [image.split("_")[0] for image in selected_images]
@@ -112,7 +112,7 @@ def create_dataset_split_metadata(metadata_path, path):
     dataset_split["best_DEM"] = "10m"
     dataset_split["best_DEM"].loc[dataset_split.disaster=="hurricane-harvey"] = "01m"
     dataset_split["best_DEM"].loc[dataset_split.disaster=="nepal-flooding"] = "30m"
-    for file_name in os.listdir(f"{path}/data/dataset_input"):
+    for file_name in os.listdir(f"{path}/dataset_input"):
         if ("midwest-flooding" in file_name) and ("01m" in file_name):
             image_name = "_".join(file_name.split("_")[:2])
             dataset_split.loc[dataset_split.image==image_name, "best_DEM"] = "01m"                                     
@@ -146,34 +146,34 @@ def download_DEM(metadata_path, api_key, path, api_name="usgsdem", resolution="1
                                          "API_Key":api_key,
                                          })
         if response.status_code == 200:
-            with open(f"{path}/data/DEM/DEM_images/{image.image}_{resolution}_DEM.tif", "wb") as file:
+            with open(f"{path}/DEM/DEM_images/{image.image}_{resolution}_DEM.tif", "wb") as file:
                 file.write(response.content)
         time.sleep(1)
         
 def project_DEM(path):
     # project the DEM to the correct coordinate system
-    for image in os.listdir(f"{path}/data/DEM/DEM_images/"):
+    for image in os.listdir(f"{path}/DEM/DEM_images/"):
         if "nepal-flooding" not in image and "1m" not in image:
             with open(f"project_DEM.bat", "a+") as file:
-                file.write(f"\ngdalwarp -overwrite -s_srs EPSG:4269 -t_srs EPSG:4326 -r near -of GTiff {path}/data/DEM/DEM_images/{image} {path}/data/DEM/DEM_projected/{image[:-4]}_proj.tif")
+                file.write(f"\ngdalwarp -overwrite -s_srs EPSG:4269 -t_srs EPSG:4326 -r near -of GTiff {path}/DEM/DEM_images/{image} {path}/DEM/DEM_projected/{image[:-4]}_proj.tif")
         elif "1m" in image:
-            image_array = gdal.Open(f"{path}/data/DEM/DEM_images/{image}")
+            image_array = gdal.Open(f"{path}/DEM/DEM_images/{image}")
             source_proj = image_array.GetProjection()[-8:-3]
             with open(f"project_DEM.bat", "a+") as file:
-                file.write(f"\ngdalwarp -overwrite -s_srs EPSG:{source_proj} -t_srs EPSG:4326 -r near -of GTiff {path}/data/DEM/DEM_images/{image} {path}/data/DEM/DEM_projected/{image[:-4]}_proj.tif")
+                file.write(f"\ngdalwarp -overwrite -s_srs EPSG:{source_proj} -t_srs EPSG:4326 -r near -of GTiff {path}/DEM/DEM_images/{image} {path}/DEM/DEM_projected/{image[:-4]}_proj.tif")
         else:
-            shutil.copyfile(f"{path}/data/DEM/DEM_images/{image}", f"{path}/data/DEM/DEM_projected/{image[:-4]}_proj.tif")
+            shutil.copyfile(f"{path}/DEM/DEM_images/{image}", f"{path}/DEM/DEM_projected/{image[:-4]}_proj.tif")
 
 # project_DEM.bat
                 
 def render_DEM(path):
     # render the DEM with a consistent representation 
-    for image in os.listdir(f"{path}/data/DEM/DEM_projected/"):
-        image_array = tf.imread(f"{path}/data/DEM/DEM_projected/" + image)
+    for image in os.listdir(f"{path}/DEM/DEM_projected/"):
+        image_array = tf.imread(f"{path}/DEM/DEM_projected/" + image)
         if "1m" in image:
             image_array[image_array < 0] = np.min(image_array[image_array > 0])
         image_array = (image_array - np.min(image_array))/100
-        tf.imsave(f"{path}/data/DEM/DEM_render/" + image[:-9] + "_render.tif", image_array, photometric="minisblack")
+        tf.imsave(f"{path}/DEM/DEM_render/" + image[:-9] + "_render.tif", image_array, photometric="minisblack")
     
 ### Open Street Map ####################################
 
@@ -182,7 +182,7 @@ def create_pbf(metadata_path, path):
     metadata = pd.read_csv(metadata_path)
     for index, image in metadata.iterrows():
         with open("create_pbf.bat", "a+") as file:
-            file.write(f"\nosmium extract -b {image.x_min},{image.y_min},{image.x_max_extended},{image.y_max} {path}/data/OSM/country_pbf/{image.disaster}.osm.pbf -o {path}/data/OSM/image_pbf/{image.image}.osm.pbf -s smart -S types=any")
+            file.write(f"\nosmium extract -b {image.x_min},{image.y_min},{image.x_max_extended},{image.y_max} {path}/OSM/country_pbf/{image.disaster}.osm.pbf -o {path}/OSM/image_pbf/{image.image}.osm.pbf -s smart -S types=any")
                             
 # create_pbf.bat
             
@@ -192,12 +192,12 @@ def create_osm(metadata_path, path):
     for index, image in metadata.iterrows():
         with open(f"create_osm.mscript", "a+") as file:
             file.write(f'\nclear-map')
-            file.write(f'\nload-source "{path}/data/OSM/image_pbf/{image.image}.osm.pbf"')
+            file.write(f'\nload-source "{path}/OSM/image_pbf/{image.image}.osm.pbf"')
             file.write(f'\nuse-ruleset alias="OSMNoText"')
             file.write(f'\napply-ruleset')
             file.write(f'\nset-geo-bounds {image.x_min},{image.y_min},{image.x_max_extended},{image.y_max}')
             file.write(f'\nset-print-bounds-geo')
-            file.write(f'\nexport-bitmap file={path}/data/OSM/osm_img/{image.image}_osm.tif height=1024')
+            file.write(f'\nexport-bitmap file={path}/OSM/osm_img/{image.image}_osm.tif height=1024')
                             
 # Maperitive create_osm.mscript
                             
@@ -205,13 +205,13 @@ def georeference_osm(metadata_path, path):
     # georeference the OSM TIFs using gdal_translate and gdal_warp
     metadata = pd.read_csv(metadata_path)
     for index, image in metadata.iterrows():
-        img = Image.open(f"{path}/data/OSM/osm_img/{image.image}_osm.tif") 
+        img = Image.open(f"{path}/OSM/osm_img/{image.image}_osm.tif") 
         width = img.width 
         height = img.height 
         with open("georeference_osm.bat", "a+") as file:
-            file.write(f"\ngdal_translate -of GTiff -gcp 0 0 {image.x_min} {image.y_max} -gcp {width} 0 {image.x_max_extended} {image.y_max} -gcp 0 {height} {image.x_min} {image.y_min} -gcp {width} {height} {image.x_max_extended} {image.y_min} {path}/data/OSM/osm_img/{image.image}_osm.tif {path}/data/OSM/osm_render/{image.image}_osm_gt.tif")
-            file.write(f"\ngdalwarp -r near -order 1 -co COMPRESS=NONE -t_srs EPSG:4326 -dstalpha {path}/data/OSM/osm_render/{image.image}_osm_gt.tif {path}/data/OSM/osm_render/{image.image}_osm_render.tif")
-            file.write(f"\ndel {path}/data/OSM/osm_render/{image.image}_osm_gt.tif")
+            file.write(f"\ngdal_translate -of GTiff -gcp 0 0 {image.x_min} {image.y_max} -gcp {width} 0 {image.x_max_extended} {image.y_max} -gcp 0 {height} {image.x_min} {image.y_min} -gcp {width} {height} {image.x_max_extended} {image.y_min} {path}/OSM/osm_img/{image.image}_osm.tif {path}/OSM/osm_render/{image.image}_osm_gt.tif")
+            file.write(f"\ngdalwarp -r near -order 1 -co COMPRESS=NONE -t_srs EPSG:4326 -dstalpha {path}/OSM/osm_render/{image.image}_osm_gt.tif {path}/OSM/osm_render/{image.image}_osm_render.tif")
+            file.write(f"\ndel {path}/OSM/osm_render/{image.image}_osm_gt.tif")
 
 # georeference_osm.bat
                             
@@ -221,11 +221,11 @@ def create_river_distance(metadata_path, path):
     # create images of the distance to the nearest river
     metadata = pd.read_csv(metadata_path)
     for index, image in metadata.iterrows():
-        img = Image.open(f"{path}/data/OSM/osm_render/{image.image}_osm_render.tif") 
+        img = Image.open(f"{path}/OSM/osm_render/{image.image}_osm_render.tif") 
         width = img.width 
         height = img.height 
         with open("create_river_distance.bat", "a+") as file:
-            file.write(f"\ngdal_rasterize -l river_distance_projected -a color_code -ts {width} {height} -a_nodata 0.0 -te {image.x_min} {image.y_min} {image.x_max_extended} {image.y_max} -ot Float32 -of GTiff {path}/data/river_distance/qgis/river_distance_projected.gpkg {path}/data/river_distance/river_distance_images/{image.image}_river_distance.tif")
+            file.write(f"\ngdal_rasterize -l river_distance_projected -a color_code -ts {width} {height} -a_nodata 0.0 -te {image.x_min} {image.y_min} {image.x_max_extended} {image.y_max} -ot Float32 -of GTiff {path}/river_distance/qgis/river_distance_projected.gpkg {path}/river_distance/river_distance_images/{image.image}_river_distance.tif")
  
 # create_river_distance.bat                          
                             
@@ -233,9 +233,9 @@ def render_river_distance(metadata_path, path):
     # render the river distance as images
     metadata = pd.read_csv(metadata_path)
     for index, image in metadata.iterrows():
-        image_array = tf.imread(f"{path}/data/river_distance/river_distance_images/{image.image}_river_distance.tif")
+        image_array = tf.imread(f"{path}/river_distance/river_distance_images/{image.image}_river_distance.tif")
         image_array = image_array/255
-        plt.imsave(f"{path}/data/river_distance/river_distance_render/{image.image}_rd_render.tiff", image_array, cmap="gray", vmin=0, vmax=1)
+        plt.imsave(f"{path}/river_distance/river_distance_render/{image.image}_rd_render.tiff", image_array, cmap="gray", vmin=0, vmax=1)
         
 ### Flow Accumulation ####################################
                             
@@ -255,16 +255,16 @@ def create_flow_accumulation(metadata_path, path):
         else: # if image.disaster == nepal-flooding
             flow_map = "india"
         with open(f"create_flow_accumulation.bat", "a+") as file:
-            file.write(f"\ngdal_translate -projwin {image.x_min} {image.y_max} {image.x_max_extended} {image.y_min} -of GTiff {path}/data/flow_accumulation/fa_full_maps/{flow_map}_flow_accumulation.tif {path}/data/flow_accumulation/fa_images/{image.image}_flow_acc.tif")
+            file.write(f"\ngdal_translate -projwin {image.x_min} {image.y_max} {image.x_max_extended} {image.y_min} -of GTiff {path}/flow_accumulation/fa_full_maps/{flow_map}_flow_accumulation.tif {path}/flow_accumulation/fa_images/{image.image}_flow_acc.tif")
 
 # create_flow_accumulation.bat                  
                             
 def render_flow_accumulation(path):
     # render the flow accumulation maps with a consistent representation
-    for image in os.listdir(f"{path}/data/flow_accumulation/fa_images/"):
-        image_array = tf.imread(f"{path}/data/flow_accumulation/fa_images/" + image)
+    for image in os.listdir(f"{path}/flow_accumulation/fa_images/"):
+        image_array = tf.imread(f"{path}/flow_accumulation/fa_images/" + image)
         image_array = image_array/5.5
-        tf.imsave(f"{path}/data/flow_accumulation/fa_render/" + image[:-12] + "fa_render.tif", image_array, photometric="minisblack")
+        tf.imsave(f"{path}/flow_accumulation/fa_render/" + image[:-12] + "fa_render.tif", image_array, photometric="minisblack")
         
 ### Image Stacks ####################################
 
@@ -272,18 +272,18 @@ def create_stacked_image_folders(metadata_path, path):
     # create folders for each image stack
     metadata = pd.read_csv(metadata_path)
     for index, image in metadata.iterrows():
-        stack_path = f"{path}/data/image_stacks/{image.image}/" 
+        stack_path = f"{path}/image_stacks/{image.image}/" 
         if not os.path.exists(stack_path):
             os.makedirs(stack_path)
 
-        shutil.copyfile(f"{path}/data/xBD/pngs_selected/{image.image}_pre_disaster.png", f"{stack_path}/1_pre_image.png")
+        shutil.copyfile(f"{path}/xBD/pngs_selected/{image.image}_pre_disaster.png", f"{stack_path}/1_pre_image.png")
 
-        shutil.copyfile(f"{path}/data/river_distance/river_distance_render/{image.image}_rd_render.tiff", f"{stack_path}/2_river_dist.tif")
+        shutil.copyfile(f"{path}/river_distance/river_distance_render/{image.image}_rd_render.tiff", f"{stack_path}/2_river_dist.tif")
 
-        shutil.copyfile(f"{path}/data/OSM/osm_render/{image.image}_osm_render.tif", f"{stack_path}/3_osm.tif")
+        shutil.copyfile(f"{path}/OSM/osm_render/{image.image}_osm_render.tif", f"{stack_path}/3_osm.tif")
 
         def DEM_path(resolution):
-            return f"{path}/data/DEM/DEM_render/{image.image}_{resolution}_DEM_render.tif"
+            return f"{path}/DEM/DEM_render/{image.image}_{resolution}_DEM_render.tif"
         if os.path.exists(DEM_path("10m")):
             shutil.copyfile(DEM_path("10m"), f"{stack_path}/4_10m_DEM.tif")
         if os.path.exists(DEM_path("1m")):
@@ -291,13 +291,13 @@ def create_stacked_image_folders(metadata_path, path):
         if os.path.exists(DEM_path("30m")):
             shutil.copyfile(DEM_path("30m"), f"{stack_path}/4_30m_DEM.tif")
 
-        shutil.copyfile(f"{path}/data/flow_accumulation/fa_render/{image.image}_fa_render.tif", f"{stack_path}/5_flow_acc.tif")
+        shutil.copyfile(f"{path}/flow_accumulation/fa_render/{image.image}_fa_render.tif", f"{stack_path}/5_flow_acc.tif")
         
 def apply_masks(path):
     # apply masks to some the satellite images to hide clouds, etc
-    for image_folder in os.listdir(f"{path}/data/image_stacks/"):
+    for image_folder in os.listdir(f"{path}/image_stacks/"):
 
-        folder_path = f"{path}/data/image_stacks/{image_folder}"
+        folder_path = f"{path}/image_stacks/{image_folder}"
         all_images = os.listdir(folder_path)
 
         if "mask.tif" in all_images:
@@ -316,9 +316,9 @@ def apply_masks(path):
             
 def create_input_stack(path):
     # create a single tif image representing the input stack of images
-    for image_folder in tqdm(os.listdir(f"{path}/data/image_stacks/")):
+    for image_folder in tqdm(os.listdir(f"{path}/image_stacks/")):
     
-        folder_path = f"{path}/data/image_stacks/{image_folder}"
+        folder_path = f"{path}/image_stacks/{image_folder}"
         all_images = os.listdir(folder_path)
 
         pre_satellite = (tf.imread(f"{folder_path}/pre_satellite.tif")/255).astype(np.float32)
@@ -345,7 +345,7 @@ def create_input_stack(path):
                                            osm,), 
                                            axis=-1)
 
-            tf.imsave(f"{path}/data/dataset_input/{image_folder}_01m.tif", 
+            tf.imsave(f"{path}/dataset_input/{image_folder}_01m.tif", 
                       full_image_1, 
                       planarconfig="contig")
 
@@ -361,7 +361,7 @@ def create_input_stack(path):
                                            osm,), 
                                            axis=-1)
 
-            tf.imsave(f"{path}/data/dataset_input/{image_folder}_10m.tif", 
+            tf.imsave(f"{path}/dataset_input/{image_folder}_10m.tif", 
                       full_image_10, 
                       planarconfig="contig")
 
@@ -377,16 +377,16 @@ def create_input_stack(path):
                                            osm,), 
                                            axis=-1)
 
-            tf.imsave(f"{path}/data/dataset_input/{image_folder}_30m.tif", 
+            tf.imsave(f"{path}/dataset_input/{image_folder}_30m.tif", 
                       full_image_30, 
                       planarconfig="contig")
             
 def create_output(path):
     # create the output images
-    for image_folder in tqdm(os.listdir(f"{path}/data/image_stacks/")):
-        folder_path = f"{path}/data/image_stacks/{image_folder}"
+    for image_folder in tqdm(os.listdir(f"{path}/image_stacks/")):
+        folder_path = f"{path}/image_stacks/{image_folder}"
         post_satellite = (tf.imread(f"{folder_path}/post_satellite.tif")/255).astype(np.float32)
-        tf.imsave(f"{path}/data/dataset_output/{image_folder}.tif", 
+        tf.imsave(f"{path}/dataset_output/{image_folder}.tif", 
               post_satellite, 
               planarconfig="contig")
     

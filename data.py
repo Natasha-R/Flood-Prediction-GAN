@@ -57,8 +57,8 @@ class FloodDataset(Dataset):
         image_path = image[0]
         version = image[1]
         if version == "flipped":
-            input_image = torch.from_numpy(np.fliplr(tf.imread(f"{self.path}/dataset_input/{image_path}")).transpose(2, 0, 1))
-            output_image = torch.from_numpy(np.fliplr(tf.imread(f"{self.path}/dataset_output/{image_path[:-8] + '.tif'}")).transpose(2, 0, 1))
+            input_image = torch.from_numpy(np.fliplr(tf.imread(f"{self.path}/dataset_input/{image_path}")).transpose(2, 0, 1).copy())
+            output_image = torch.from_numpy(np.fliplr(tf.imread(f"{self.path}/dataset_output/{image_path[:-8] + '.tif'}")).transpose(2, 0, 1).copy())
         else:
             input_image = torch.from_numpy(tf.imread(f"{self.path}/dataset_input/{image_path}").transpose(2, 0, 1))
             output_image = torch.from_numpy(tf.imread(f"{self.path}/dataset_output/{image_path[:-8] + '.tif'}").transpose(2, 0, 1))

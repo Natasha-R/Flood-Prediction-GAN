@@ -103,9 +103,11 @@ class Model():
                 self.loss_func = nn.MSELoss()
                 self.cycle_loss = nn.L1Loss()
                 self.identity_loss = nn.L1Loss()
-                self.optimizer_generator = torch.optim.Adam(itertools.chain(self.pre_to_post_generator.parameters(), self.post_to_pre_generator.parameters()), 
+                self.optimizer_generator = torch.optim.Adam(itertools.chain(self.pre_to_post_generator.parameters(), 
+                                                                            self.post_to_pre_generator.parameters()), 
                                                     lr=0.0002, betas=(0.5, 0.999))
-                self.optimizer_discriminator = torch.optim.Adam(itertools.chain(self.post_discriminator.parameters(), self.pre_discriminator.parameters()), 
+                self.optimizer_discriminator = torch.optim.Adam(itertools.chain(self.post_discriminator.parameters(), 
+                                                                                self.pre_discriminator.parameters()), 
                                                         lr=0.0002, betas=(0.5, 0.999))
             else:     
                 self.loss_func = nn.BCEWithLogitsLoss()
@@ -164,6 +166,14 @@ class Model():
             nn.init.normal_(m.weight.data, 1.0, 0.02)
             nn.init.constant_(m.bias.data, 0.0)
 
+    def lambda_rule(self, epoch):
+        """
+        The learning rate stays the same for the first half of epochs,
+        then decreases linearly for the second half of epochs.
+        """
+        learning_rate = 1.0 - max(0, epoch + 1 - (self.num_epochs / 2)) / float((self.num_epochs/2) + 1)
+        return learning_rate
+    
     def initialise_loss_storage(self, overall):
         """
         Initialises a dictionary to store the losses during training.
@@ -211,7 +221,17 @@ class Model():
         if self.model not in model_to_category.keys():
             raise NotImplementedError("Model must be one of: Pix2Pix, CycleGAN, AttentionGAN or PairedAttention")
         return model_to_category[self.model]
-
+    
+    def prettify_model_name(self, model_name=None):
+        """
+        Prettifies the model name capitalisation, for pretty printing.
+        """
+        model_to_pretty = {"pix2pix":"Pix2Pix",
+                           "cyclegan":"CycleGAN",
+                           "attentiongan":"AttentionGAN",
+                           "pairedattention":"PairedAttention"}
+        return model_to_pretty[model_name] if model_name else model_to_pretty[self.model]
+    
     def create_path(self, save_type, info=""):
         """
         Defines an informative path string to save images or models to, 
@@ -246,6 +266,27 @@ class Model():
         print(f"Model saved every {self.save_model_interval} epochs")
         print(f"Sample generator output images saved every {self.save_images_interval} epochs\n")
 
+    def get_buffer_image(self, image, images_buffer):
+        """
+        Return an image from the buffer.
+        There is a 50% chance the new image is stored and a random old image is returned,
+        and a 50% chance the new image is not stored and the new image is returned.
+        If the buffer is not yet full, the new image is always stored and returned.
+        """
+        image = image.detach()
+        if len(images_buffer) < 50: # if the buffer is not yet full, always store the new image AND return it
+            images_buffer.append(image.cpu())
+            return image
+        else:
+            p = random.uniform(0, 1)
+            if p > 0.5: # 50% chance the new image is stored and a random old image is returned
+                index = random.randint(0, 50 - 1)
+                old_image = images_buffer[index].clone()
+                images_buffer[index] = image.cpu()
+                return old_image.to(device)
+            else: # 50% chance the new image is not stored and the new image is returned
+                return image
+
     def print_losses(self):
         """
         Prints the model losses from the previous epoch.
@@ -270,35 +311,6 @@ class Model():
                 f"Discriminator synthetic loss = {self.all_losses['all_losses_discriminator_synthetic'][-1]:.2f} | "
                 f"Generator synthetic loss = {self.all_losses['all_losses_generator_synthetic'][-1]:.2f} | "
                 f"L1 generator loss = {self.all_losses['all_l1_losses_generator_synthetic'][-1]:.2f}"))
-
-    def lambda_rule(self, epoch):
-        """
-        The learning rate stays the same for the first half of epochs,
-        then decreases linearly for the second half of epochs.
-        """
-        learning_rate = 1.0 - max(0, epoch + 1 - (self.num_epochs / 2)) / float((self.num_epochs/2) + 1)
-        return learning_rate
-
-    def get_buffer_image(self, image, images_buffer):
-        """
-        Return an image from the buffer.
-        There is a 50% chance the new image is stored and a random old image is returned,
-        and a 50% chance the new image is not stored and the new image is returned.
-        If the buffer is not yet full, the new image is always stored and returned.
-        """
-        image = image.detach()
-        if len(images_buffer) < 50: # if the buffer is not yet full, always store the new image AND return it
-            images_buffer.append(image.cpu())
-            return image
-        else:
-            p = random.uniform(0, 1)
-            if p > 0.5: # 50% chance the new image is stored and a random old image is returned
-                index = random.randint(0, 50 - 1)
-                old_image = images_buffer[index].clone()
-                images_buffer[index] = image.cpu()
-                return old_image.to(device)
-            else: # 50% chance the new image is not stored and the new image is returned
-                return image
 
     def save_results(self, epoch, losses, epoch_start_time):
         """
@@ -519,16 +531,6 @@ class Model():
                     fig.savefig(images_path, bbox_inches="tight")
 
                     plt.close();
-    
-    def prettify_model_name(self, model_name=None):
-        """
-        Prettifies the model name capitalisation, for pretty printing.
-        """
-        model_to_pretty = {"pix2pix":"Pix2Pix",
-                           "cyclegan":"CycleGAN",
-                           "attentiongan":"AttentionGAN",
-                           "pairedattention":"PairedAttention"}
-        return model_to_pretty[model_name] if model_name else model_to_pretty[self.model]
 
     def train_paired(self):
         """

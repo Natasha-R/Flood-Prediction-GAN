@@ -4,7 +4,7 @@ This repo contains the code for training generative adversarial networks (GANs) 
 
 This project is a current **work in progress**, hence the code and documentation is currently **incomplete.** Work status:  
 - [x] Data pre-processing  
-- [ ] Creating models ``🛠️ currently working on 🛠️``
-- [ ] Training models  
+- [x] Creating models 
+- [ ] Training models ``🛠️ currently working on 🛠️``
 - [ ] Evaluating results  
 - [ ] Results presentation

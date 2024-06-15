@@ -105,10 +105,10 @@ class Model():
                 self.identity_loss = nn.L1Loss()
                 self.optimizer_generator = torch.optim.Adam(itertools.chain(self.pre_to_post_generator.parameters(), 
                                                                             self.post_to_pre_generator.parameters()), 
-                                                    lr=0.0002, betas=(0.5, 0.999))
+                                                            lr=0.0002, betas=(0.5, 0.999))
                 self.optimizer_discriminator = torch.optim.Adam(itertools.chain(self.post_discriminator.parameters(), 
                                                                                 self.pre_discriminator.parameters()), 
-                                                        lr=0.0002, betas=(0.5, 0.999))
+                                                                lr=0.0002, betas=(0.5, 0.999))
             else:     
                 self.loss_func = nn.BCEWithLogitsLoss()
                 self.l1_loss = nn.L1Loss()
@@ -503,11 +503,11 @@ class Model():
                         if generator_label=="post-to-pre": # flip the input and output
                             store_output = output_image.clone()
                             if self.not_input_topography:
-                                output_image = input_stack.to(device)
+                                output_image = input_stack.clone().to(device)
                                 input_stack = store_output.to(device)
                             else:
                                 topography = input_stack[:, 3:, :, :].detach().clone()
-                                output_image = input_stack[:, :3, :, :].to(device)
+                                output_image = input_stack[:, :3, :, :].clone().to(device)
                                 input_stack = torch.cat((store_output, topography), dim=1).to(device)
                         else:
                             input_stack = input_stack.to(device)
@@ -618,14 +618,15 @@ class Model():
                 real_post_image = output_image.to(device)
                 if not self.not_input_topography:
                     topography = input_stack[:, 3:, :, :].detach().clone()
-                    real_post_image = torch.cat((real_post_image, topography.clone().to(device)), dim=1)
+                    real_post_image = torch.cat((real_post_image, topography.detach().clone().to(device)), dim=1)
                 synthetic_post_image = self.pre_to_post_generator(real_pre_image)
                 synthetic_pre_image = self.post_to_pre_generator(real_post_image)
                 if not self.not_input_topography:
-                    synthetic_post_image = torch.cat((synthetic_post_image, topography.clone().to(device)), dim=1)
-                    synthetic_pre_image = torch.cat((synthetic_pre_image, topography.clone().to(device)), dim=1)
+                    synthetic_post_image = torch.cat((synthetic_post_image, topography.detach().clone().to(device)), dim=1)
+                    synthetic_pre_image = torch.cat((synthetic_pre_image, topography.detach().clone().to(device)), dim=1)
                 recreated_post_image = self.pre_to_post_generator(synthetic_pre_image)  
-                recreated_pre_image = self.post_to_pre_generator(synthetic_post_image)                              
+                recreated_pre_image = self.post_to_pre_generator(synthetic_post_image)      
+
                 # train the generators
                 for parameter in self.pre_discriminator.parameters(): 
                     parameter.requires_grad = False
@@ -640,9 +641,9 @@ class Model():
                     identity_loss_pre = self.identity_loss(self.post_to_pre_generator(real_pre_image), real_pre_image[:, :3, :, :]) * 5
                 discriminator_prediction_shape = self.post_discriminator(synthetic_post_image).shape
                 post_generator_loss = self.loss_func(self.post_discriminator(synthetic_post_image), 
-                                                torch.full(discriminator_prediction_shape, 1., dtype=torch.float32, device=device))
+                                                    torch.full(discriminator_prediction_shape, 1., dtype=torch.float32, device=device))
                 pre_generator_loss = self.loss_func(self.pre_discriminator(synthetic_pre_image), 
-                                            torch.full(discriminator_prediction_shape, 1., dtype=torch.float32, device=device))
+                                                    torch.full(discriminator_prediction_shape, 1., dtype=torch.float32, device=device))
                 pre_to_post_cycle_loss = self.cycle_loss(recreated_pre_image, real_pre_image[:, :3, :, :]) * 10
                 post_to_pre_cycle_loss = self.cycle_loss(recreated_post_image, real_post_image[:, :3, :, :]) * 10                                       
                 generator_loss = post_generator_loss + pre_generator_loss + pre_to_post_cycle_loss + post_to_pre_cycle_loss + identity_loss_post + identity_loss_pre
@@ -660,15 +661,15 @@ class Model():
                 synthetic_post_image = self.get_buffer_image(synthetic_post_image, post_images_buffer)
 
                 loss_discriminator_real_pre = self.loss_func(self.pre_discriminator(real_pre_image),
-                                                    torch.full(discriminator_prediction_shape, 1., dtype=torch.float32, device=device))
-                loss_discriminator_synthetic_pre = self.loss_func(self.pre_discriminator(synthetic_pre_image),
-                                                            torch.full(discriminator_prediction_shape, 0., dtype=torch.float32, device=device))
+                                                            torch.full(discriminator_prediction_shape, 1., dtype=torch.float32, device=device))
+                loss_discriminator_synthetic_pre = self.loss_func(self.pre_discriminator(synthetic_pre_image.detach()),
+                                                                 torch.full(discriminator_prediction_shape, 0., dtype=torch.float32, device=device))
                 loss_discriminator_pre = (loss_discriminator_real_pre + loss_discriminator_synthetic_pre) * 0.5
                 loss_discriminator_pre.backward()
 
                 loss_discriminator_real_post = self.loss_func(self.post_discriminator(real_post_image),
                                                         torch.full(discriminator_prediction_shape, 1., dtype=torch.float32, device=device))
-                loss_discriminator_synthetic_post = self.loss_func(self.post_discriminator(synthetic_post_image),
+                loss_discriminator_synthetic_post = self.loss_func(self.post_discriminator(synthetic_post_image.detach()),
                                                             torch.full(discriminator_prediction_shape, 0., dtype=torch.float32, device=device))
                 loss_discriminator_post = (loss_discriminator_real_post + loss_discriminator_synthetic_post) * 0.5
                 loss_discriminator_post.backward()

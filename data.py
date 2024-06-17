@@ -4,7 +4,7 @@ import tifffile as tf
 
 import torch
 from torch.utils.data import Dataset, DataLoader
-from torchvision.transforms import Resize
+from torchvision.transforms import Resize, Normalize, InterpolationMode
 
 def create_dataset(dataset_subset,
                    dataset_dem,
@@ -63,8 +63,8 @@ class FloodDataset(Dataset):
             input_image = torch.from_numpy(tf.imread(f"{self.path}/dataset_input/{image_path}").transpose(2, 0, 1))
             output_image = torch.from_numpy(tf.imread(f"{self.path}/dataset_output/{image_path[:-8] + '.tif'}").transpose(2, 0, 1))
         if self.resize:
-            input_image = Resize(self.resize, antialias=True)(input_image)
-            output_image = Resize(self.resize, antialias=True)(output_image)
+            input_image = Resize(self.resize, antialias=True, interpolation=InterpolationMode.BICUBIC)(input_image)
+            output_image = Resize(self.resize, antialias=True, interpolation=InterpolationMode.BICUBIC)(output_image)
         if self.crop:
             crop_index = image[2]
             channels, rows, cols = input_image.shape
@@ -77,8 +77,14 @@ class FloodDataset(Dataset):
             start_col = col_index * cols_size
             input_image = input_image[:, start_row:start_row + rows_size, start_col:start_col + cols_size]
             output_image = output_image[:, start_row:start_row + rows_size, start_col:start_col + cols_size]
+        # scale to a [-1, 1] range
+        input_image = Normalize(mean=(0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5), 
+                                std=(0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5))(input_image)
+        output_image = Normalize(mean=(0.5, 0.5, 0.5), 
+                                std=(0.5, 0.5, 0.5))(output_image)
         if self.not_input_topography:
             input_image = input_image[:3, :, :]
+
         return input_image, output_image
 
     def __len__(self):

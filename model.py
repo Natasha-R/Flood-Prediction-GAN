@@ -110,7 +110,7 @@ class Model():
                                                                                 self.pre_discriminator.parameters()), 
                                                                 lr=0.0002, betas=(0.5, 0.999))
             else:     
-                self.loss_func = nn.BCEWithLogitsLoss()
+                self.loss_func = nn.MSELoss()
                 self.l1_loss = nn.L1Loss()
                 self.optimizer_discriminator = torch.optim.Adam(self.discriminator.parameters(), lr=0.0002, betas=(0.5, 0.999))
                 self.optimizer_generator = torch.optim.Adam(self.generator.parameters(), lr=0.0002, betas=(0.5, 0.999))
@@ -261,7 +261,7 @@ class Model():
         print(f"Additional topographical factors will {'NOT ' if self.not_input_topography else ''}be input to the model")
         if self.model_is_cycle and self.add_identity_loss:
             print(f"Using identity mapping loss")
-        print(f"Dataset: '{self.dataset_subset}' with '{self.dataset_dem} DEM'")
+        print(f"Dataset: {len(self.train_loader)} images from '{self.dataset_subset}' with '{self.dataset_dem} DEM'")
         print(f"Data resized to {self.resize} pixels with {self.crop} crops, scaled to [-1, 1]")
         print(f"Model saved every {self.save_model_interval} epochs")
         print(f"Sample generator output images saved every {self.save_images_interval} epochs\n")
@@ -388,8 +388,7 @@ class Model():
                                     self.all_losses[loss],
                                     c=parameters["colour"], 
                                     label=parameters["label"],
-                                    marker="o",
-                                    linewidth=3,)
+                                    linewidth=2)
         axes[0].set_title(f"{self.prettify_model_name()} Discriminator and Generator Losses", fontsize=15)
         axes[1].set_title(f"{self.prettify_model_name()} {'Cycle Losses' if self.model_is_cycle else 'L1 Losses'}", fontsize=15)
         axes[0].legend(fontsize=14)

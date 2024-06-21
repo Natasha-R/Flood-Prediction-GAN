@@ -84,8 +84,8 @@ class FloodDataset(Dataset):
                                 std=(0.5, 0.5, 0.5))(output_image)
         if self.not_input_topography:
             input_image = input_image[:3, :, :]
-
-        return input_image, output_image
+        image_name = f"{image_path[:-8]}_{crop_index}" if self.crop else image_path[:-8]
+        return input_image, output_image, image_name
 
     def __len__(self):
         return len(self.data_files)

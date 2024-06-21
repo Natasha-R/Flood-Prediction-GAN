@@ -441,8 +441,10 @@ class Model():
             start_col = col_index * cols_size
             input_image = input_image[:, start_row:start_row + rows_size, start_col:start_col + cols_size]
             ground_truth = ground_truth[:, start_row:start_row + rows_size, start_col:start_col + cols_size]
+            image_name = f"{image_name}_{crop_index}"
         input_image = Normalize(mean=(0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5), 
                                 std=(0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5))(input_image)
+        ground_truth = Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))(ground_truth)
         input_image = torch.unsqueeze(input_image, dim=0).to(device)
         with torch.no_grad():
             generator = self.pre_to_post_generator if self.model_is_cycle else self.generator
@@ -478,7 +480,7 @@ class Model():
             axes[0].imshow(self.tensor_to_numpy(input_image), vmin=0, vmax=1)
             axes[1].imshow(generator_output, vmin=0, vmax=1)
             axes[num_cols-1].imshow(self.tensor_to_numpy(ground_truth), vmin=0, vmax=1)
-            axes[0].set_title("Input")
+            axes[0].set_title(f"Input ({image_name})")
             axes[1].set_title("Generator Output")
             axes[num_cols-1].set_title("Ground Truth Output")
             if self.model_is_attention:
@@ -509,7 +511,7 @@ class Model():
                     for ax in axes.ravel():
                         ax.set_axis_off()
                     torch.manual_seed(self.seed)
-                    for i, (input_stack, output_image) in enumerate(dataloader):
+                    for i, (input_stack, output_image, image_name) in enumerate(dataloader):
                         if generator_label=="post-to-pre": # flip the input and output
                             store_output = output_image.clone()
                             if self.not_input_topography:
@@ -525,7 +527,7 @@ class Model():
                         axes[i, 0].imshow(self.tensor_to_numpy(input_stack), vmin=0, vmax=1)
                         axes[i, 1].imshow(self.tensor_to_numpy(generator(input_stack)), vmin=0, vmax=1)
                         axes[i, num_cols-1].imshow(self.tensor_to_numpy(output_image), vmin=0, vmax=1)
-                        axes[i, 0].set_title("Input")
+                        axes[i, 0].set_title(f"Input ({image_name[0]})")
                         axes[i, 1].set_title("Generator Output")
                         axes[i, num_cols-1].set_title("Ground Truth Output")
                         if self.model_is_attention:
@@ -554,7 +556,7 @@ class Model():
 
             torch.manual_seed(epoch)
 
-            for input_stack, output_image in tqdm(self.train_loader, desc="Iterations", leave=False, disable=not self.verbose):
+            for input_stack, output_image, _ in tqdm(self.train_loader, desc="Iterations", leave=False, disable=not self.verbose):
 
                 input_stack = input_stack.to(device)
                 output_image = output_image.to(device)
@@ -621,7 +623,7 @@ class Model():
 
             torch.manual_seed(epoch)
 
-            for input_stack, output_image in tqdm(self.train_loader, desc="Iterations", leave=False, disable=not self.verbose):
+            for input_stack, output_image, _ in tqdm(self.train_loader, desc="Iterations", leave=False, disable=not self.verbose):
                 
                 real_pre_image = input_stack.to(device)
                 real_post_image = output_image.to(device)

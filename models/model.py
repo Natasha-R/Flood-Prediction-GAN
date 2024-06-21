@@ -1,6 +1,6 @@
-import data
-import utils
-import model_architectures
+from models import data
+from models import utils
+from models import model_architectures
 
 import time
 import random
@@ -419,7 +419,7 @@ class Model():
         # apply transformations and generate the output image
         input_image, ground_truth, image_name = utils.apply_transformations(image_name=image_name,
                                                                             input_image=input_image, 
-                                                                            ground_truth=ground_truth, 
+                                                                            output_image=ground_truth, 
                                                                             not_input_topography=self.not_input_topography, 
                                                                             resize=self.resize, 
                                                                             crop=self.crop, 

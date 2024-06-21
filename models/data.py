@@ -1,4 +1,4 @@
-import utils
+from models import utils
 
 import pandas as pd
 import numpy as np
@@ -68,7 +68,7 @@ class FloodDataset(Dataset):
 
         input_image, output_image, image_name = utils.apply_transformations(image_name=image_name,
                                                                             input_image=input_image, 
-                                                                            ground_truth=output_image, 
+                                                                            output_image=output_image, 
                                                                             not_input_topography=self.not_input_topography, 
                                                                             resize=self.resize, 
                                                                             crop=self.crop, 

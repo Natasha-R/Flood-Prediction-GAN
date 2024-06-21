@@ -1,5 +1,5 @@
-import model
-import utils
+from models import model
+from models import utils
 
 import os
 import pandas as pd
@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 
 import torch
 
-class Models():
+class ModelsGroup():
     """
     A class containing the four Pix2Pix, CycleGAN, AttentionGAN and PairedAttention models,
     for the purpose of making comparisons between them.
@@ -86,7 +86,7 @@ class Models():
 
             input_image, ground_truth, image_name = utils.apply_transformations(image_name=image_name,
                                                                                 input_image=input_image, 
-                                                                                ground_truth=ground_truth, 
+                                                                                output_image=ground_truth, 
                                                                                 not_input_topography=self.not_input_topography, 
                                                                                 resize=self.resize, 
                                                                                 crop=self.crop, 

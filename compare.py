@@ -1,4 +1,4 @@
-import models
+from models import group
 import argparse
 
 if __name__ == "__main__":
@@ -18,7 +18,7 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
 
-    all_models = models.Models(pix2pix_path=args.pix2pix_path,
+    all_models = group.ModelsGroup(pix2pix_path=args.pix2pix_path,
                                cyclegan_path=args.cyclegan_path,
                                attentiongan_path=args.attentiongan_path,
                                pairedattention_path=args.pairedattention_path,

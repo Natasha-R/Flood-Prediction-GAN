@@ -309,29 +309,29 @@ class PairedAttentionGenerator(nn.Module):
         self.input_channels = input_channels
         self.last_attention_mask = None
         
-        self.conv1 = nn.Conv2d(input_channels, 64, 7, 1, 0)
+        self.conv1 = nn.Conv2d(input_channels, 64, kernel_size=7, stride=1, padding=0)
         self.conv1_norm = nn.InstanceNorm2d(64)
-        self.conv2 = nn.Conv2d(64, 128, 3, 2, 1)
+        self.conv2 = nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1)
         self.conv2_norm = nn.InstanceNorm2d(128)
-        self.conv3 = nn.Conv2d(128, 256, 3, 2, 1)
+        self.conv3 = nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1)
         self.conv3_norm = nn.InstanceNorm2d(256)
 
         self.resnet_blocks = []
         for i in range(9):
-            self.resnet_blocks.append(PairedAttentionBlock(256, 3, 1, 1))
+            self.resnet_blocks.append(PairedAttentionBlock(channel=256, kernel=3, stride=1, padding=1))
         self.resnet_blocks = nn.Sequential(*self.resnet_blocks)
 
-        self.deconv1_content = nn.ConvTranspose2d(256, 128, 3, 2, 1, 1)
+        self.deconv1_content = nn.ConvTranspose2d(256, 128, kernel_size=3, stride=2, padding=1, output_padding=1)
         self.deconv1_norm_content = nn.InstanceNorm2d(128)
-        self.deconv2_content = nn.ConvTranspose2d(128, 64, 3, 2, 1, 1)
+        self.deconv2_content = nn.ConvTranspose2d(128, 64, kernel_size=3, stride=2, padding=1, output_padding=1)
         self.deconv2_norm_content = nn.InstanceNorm2d(64)
-        self.deconv3_content = nn.Conv2d(64, 27, 7, 1, 0)
+        self.deconv3_content = nn.Conv2d(64, 27, kernel_size=7, stride=1, padding=0)
 
-        self.deconv1_attention = nn.ConvTranspose2d(256, 128, 3, 2, 1, 1)
+        self.deconv1_attention = nn.ConvTranspose2d(256, 128, kernel_size=3, stride=2, padding=1, output_padding=1)
         self.deconv1_norm_attention = nn.InstanceNorm2d(128)
-        self.deconv2_attention = nn.ConvTranspose2d(128, 64, 3, 2, 1, 1)
+        self.deconv2_attention = nn.ConvTranspose2d(128, 64, kernel_size=3, stride=2, padding=1, output_padding=1)
         self.deconv2_norm_attention = nn.InstanceNorm2d(64)
-        self.deconv3_attention = nn.Conv2d(64, 10, 1, 1, 0)
+        self.deconv3_attention = nn.Conv2d(64, 10, kernel_size=1, stride=1, padding=0)
         
         self.tanh = torch.nn.Tanh()
         self.softmax = torch.nn.Softmax(dim=1)

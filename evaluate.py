@@ -9,7 +9,7 @@ if __name__ == "__main__":
     parser.add_argument("--dataset_subset", default="all", help="Specify the dataset subset, e.g. USA, India, Hurricane-Harvey")
     parser.add_argument("--dataset_dem", required=True, help="Specify whether the DEM used should be 'best' available or all the 'same'")
     parser.add_argument("--data_path", required=True, help="The path to the location of the data folder. Example: 'C:/data'")
-    parser.add_argument("--resize", type=int, default=256, help="Resize the images to the given size. The resize is applied before the crop")
+    parser.add_argument("--resize", type=int, default=None, help="Resize the images to the given size. The resize is applied before the crop")
     parser.add_argument("--crop", type=int, default=None, help="Crop each image into the given number of images. The resize is applied before the crop")
     parser.add_argument("--crop_index", type=int, default=0, help="When saving an image with the crop transformation, the crop_index indicates which quadrant to save")
     parser.add_argument("--pretrained_model_path", required=True, help="Path to a pretrained model")

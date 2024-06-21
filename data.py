@@ -1,10 +1,11 @@
+import utils
+
 import pandas as pd
 import numpy as np
 import tifffile as tf
 
 import torch
 from torch.utils.data import Dataset, DataLoader
-from torchvision.transforms import Resize, Normalize, InterpolationMode
 
 def create_dataset(dataset_subset,
                    dataset_dem,
@@ -56,35 +57,23 @@ class FloodDataset(Dataset):
         image = self.data_files[index]
         image_path = image[0]
         version = image[1]
+        image_name = image_path[:-8]
+        crop_index = image[2] if self.crop else 0
         if version == "flipped":
             input_image = torch.from_numpy(np.fliplr(tf.imread(f"{self.path}/dataset_input/{image_path}")).transpose(2, 0, 1).copy())
-            output_image = torch.from_numpy(np.fliplr(tf.imread(f"{self.path}/dataset_output/{image_path[:-8] + '.tif'}")).transpose(2, 0, 1).copy())
+            output_image = torch.from_numpy(np.fliplr(tf.imread(f"{self.path}/dataset_output/{image_name + '.tif'}")).transpose(2, 0, 1).copy())
         else:
             input_image = torch.from_numpy(tf.imread(f"{self.path}/dataset_input/{image_path}").transpose(2, 0, 1))
-            output_image = torch.from_numpy(tf.imread(f"{self.path}/dataset_output/{image_path[:-8] + '.tif'}").transpose(2, 0, 1))
-        if self.resize:
-            input_image = Resize(self.resize, antialias=True, interpolation=InterpolationMode.BICUBIC)(input_image)
-            output_image = Resize(self.resize, antialias=True, interpolation=InterpolationMode.BICUBIC)(output_image)
-        if self.crop:
-            crop_index = image[2]
-            channels, rows, cols = input_image.shape
-            num_divisions = int(np.sqrt(self.crop))
-            rows_size = rows // num_divisions
-            cols_size = cols // num_divisions
-            row_index = crop_index // num_divisions
-            col_index = crop_index % num_divisions
-            start_row = row_index * rows_size
-            start_col = col_index * cols_size
-            input_image = input_image[:, start_row:start_row + rows_size, start_col:start_col + cols_size]
-            output_image = output_image[:, start_row:start_row + rows_size, start_col:start_col + cols_size]
-        # scale to a [-1, 1] range
-        input_image = Normalize(mean=(0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5), 
-                                std=(0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5))(input_image)
-        output_image = Normalize(mean=(0.5, 0.5, 0.5), 
-                                std=(0.5, 0.5, 0.5))(output_image)
-        if self.not_input_topography:
-            input_image = input_image[:3, :, :]
-        image_name = f"{image_path[:-8]}_{crop_index}" if self.crop else image_path[:-8]
+            output_image = torch.from_numpy(tf.imread(f"{self.path}/dataset_output/{image_name + '.tif'}").transpose(2, 0, 1))
+
+        input_image, output_image, image_name = utils.apply_transformations(image_name=image_name,
+                                                                            input_image=input_image, 
+                                                                            ground_truth=output_image, 
+                                                                            not_input_topography=self.not_input_topography, 
+                                                                            resize=self.resize, 
+                                                                            crop=self.crop, 
+                                                                            crop_index=crop_index,
+                                                                            to_loader=True)
         return input_image, output_image, image_name
 
     def __len__(self):

@@ -1,4 +1,5 @@
 import data
+import utils
 import model_architectures
 
 import time
@@ -14,7 +15,6 @@ import matplotlib.pyplot as plt
 import torch
 from torch import nn
 from torch.optim import lr_scheduler
-from torchvision.transforms import Resize, Normalize, InterpolationMode
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -402,14 +402,6 @@ class Model():
         losses_path = self.create_path(save_type="figure", info="losses")
         print(f"\nSaving losses figure to {losses_path}")
         fig.savefig(losses_path, bbox_inches="tight")
-
-    def tensor_to_numpy(self, image):
-        image = image.squeeze().cpu().detach().numpy()
-        if len(image.shape)==3:
-            image = image.transpose(1, 2, 0)[:, :, :3]
-            image = (image + 1) * 0.5
-            image = np.clip(image, 0, 1)
-        return image
     
     def plot_image(self, image_name, plot_single_image, plot_image_set, crop_index=0):
         """
@@ -424,48 +416,33 @@ class Model():
         input_image = torch.from_numpy(tf.imread(input_path).transpose(2, 0, 1))
         ground_truth = torch.from_numpy(tf.imread(f"{self.data_path}/dataset_output/{image_name}.tif").transpose(2, 0, 1))
 
-        # apply transformations
-        if self.not_input_topography:
-            input_image = input_image[:3, :, :]
-        if self.resize:
-            input_image = Resize(self.resize, antialias=True, interpolation=InterpolationMode.BICUBIC)(input_image)
-            ground_truth = Resize(self.resize, antialias=True, interpolation=InterpolationMode.BICUBIC)(ground_truth)
-        if self.crop:
-            channels, rows, cols = input_image.shape
-            num_divisions = int(np.sqrt(self.crop))
-            rows_size = rows // num_divisions
-            cols_size = cols // num_divisions
-            row_index = crop_index // num_divisions
-            col_index = crop_index % num_divisions
-            start_row = row_index * rows_size
-            start_col = col_index * cols_size
-            input_image = input_image[:, start_row:start_row + rows_size, start_col:start_col + cols_size]
-            ground_truth = ground_truth[:, start_row:start_row + rows_size, start_col:start_col + cols_size]
-            image_name = f"{image_name}_{crop_index}"
-        input_image = Normalize(mean=(0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5), 
-                                std=(0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5))(input_image)
-        ground_truth = Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))(ground_truth)
-        input_image = torch.unsqueeze(input_image, dim=0).to(device)
-        with torch.no_grad():
-            generator = self.pre_to_post_generator if self.model_is_cycle else self.generator
-            generator_output = self.tensor_to_numpy(generator(input_image))
+        # apply transformations and generate the output image
+        input_image, ground_truth, image_name = utils.apply_transformations(image_name=image_name,
+                                                                            input_image=input_image, 
+                                                                            ground_truth=ground_truth, 
+                                                                            not_input_topography=self.not_input_topography, 
+                                                                            resize=self.resize, 
+                                                                            crop=self.crop, 
+                                                                            crop_index=crop_index)
+        generator = self.pre_to_post_generator if self.model_is_cycle else self.generator
+        generator_output = utils.tensor_to_numpy(generator(input_image))
 
         # plot the image
         if plot_single_image:
             if plot_single_image=="input":
                 input_image_path = f"{self.data_path}/images/{image_name}_input.png"
                 print(f"\nSaving input image of image '{image_name}' to {input_image_path}")
-                plt.imsave(input_image_path, self.tensor_to_numpy(input_image), vmin=0, vmax=1)
+                plt.imsave(input_image_path, utils.tensor_to_numpy(input_image), vmin=0, vmax=1)
             elif plot_single_image=="ground truth":
                 ground_truth_path = f"{self.data_path}/images/{image_name}_groundTruth.png"
                 print(f"\nSaving ground truth of image '{image_name}' to {ground_truth_path}")
-                plt.imsave(ground_truth_path, self.tensor_to_numpy(ground_truth), vmin=0, vmax=1)
+                plt.imsave(ground_truth_path, utils.tensor_to_numpy(ground_truth), vmin=0, vmax=1)
             elif plot_single_image=="output":
                 generator_output_path = self.create_path(save_type="image", info=image_name)
                 print(f"\nSaving generator output of image '{image_name}' to {generator_output_path}")
                 plt.imsave(generator_output_path, generator_output, vmin=0, vmax=1)
             elif plot_single_image=="attention mask" and self.model_is_attention:
-                attention_mask = self.tensor_to_numpy(generator.last_attention_mask)
+                attention_mask = utils.tensor_to_numpy(generator.last_attention_mask)
                 attention_mask_path = self.create_path(save_type="image", info=f"{image_name}_attentionMask")
                 print(f"\nSaving attention mask of image '{image_name}' to {attention_mask_path}")
                 plt.imsave(attention_mask_path, attention_mask, vmin=0, vmax=1, cmap="gray_r")
@@ -477,14 +454,14 @@ class Model():
             fig, axes = plt.subplots(nrows=1, ncols=num_cols, figsize=(num_cols * 5, 5))
             for ax in axes.ravel():
                 ax.set_axis_off()
-            axes[0].imshow(self.tensor_to_numpy(input_image), vmin=0, vmax=1)
+            axes[0].imshow(utils.tensor_to_numpy(input_image), vmin=0, vmax=1)
             axes[1].imshow(generator_output, vmin=0, vmax=1)
-            axes[num_cols-1].imshow(self.tensor_to_numpy(ground_truth), vmin=0, vmax=1)
+            axes[num_cols-1].imshow(utils.tensor_to_numpy(ground_truth), vmin=0, vmax=1)
             axes[0].set_title(f"Input ({image_name})")
             axes[1].set_title("Generator Output")
             axes[num_cols-1].set_title("Ground Truth Output")
             if self.model_is_attention:
-                axes[2].imshow(self.tensor_to_numpy(generator.last_attention_mask), cmap="gray_r", vmin=0, vmax=1)
+                axes[2].imshow(utils.tensor_to_numpy(generator.last_attention_mask), cmap="gray_r", vmin=0, vmax=1)
                 axes[2].set_title("Attention Mask")
             fig.tight_layout()
             images_path = self.create_path(save_type="image", info=image_name)
@@ -504,44 +481,43 @@ class Model():
             generators = [("pre-to-post", self.generator)]
 
         for generator_label, generator in generators:
-            with torch.no_grad():
-                for split, dataloader in zip(["training", "validation"], [self.train_loader, self.val_loader]):
-                    num_cols = 4 if self.model_is_attention else 3
-                    fig, axes = plt.subplots(nrows=num_images, ncols=num_cols, figsize=(num_cols * 5, num_images * 5))
-                    for ax in axes.ravel():
-                        ax.set_axis_off()
-                    torch.manual_seed(self.seed)
-                    for i, (input_stack, output_image, image_name) in enumerate(dataloader):
-                        if generator_label=="post-to-pre": # flip the input and output
-                            store_output = output_image.clone()
-                            if self.not_input_topography:
-                                output_image = input_stack.clone().to(device)
-                                input_stack = store_output.to(device)
-                            else:
-                                topography = input_stack[:, 3:, :, :].detach().clone()
-                                output_image = input_stack[:, :3, :, :].clone().to(device)
-                                input_stack = torch.cat((store_output, topography), dim=1).to(device)
+            for split, dataloader in zip(["training", "validation"], [self.train_loader, self.val_loader]):
+                num_cols = 4 if self.model_is_attention else 3
+                fig, axes = plt.subplots(nrows=num_images, ncols=num_cols, figsize=(num_cols * 5, num_images * 5))
+                for ax in axes.ravel():
+                    ax.set_axis_off()
+                torch.manual_seed(self.seed)
+                for i, (input_stack, output_image, image_name) in enumerate(dataloader):
+                    if generator_label=="post-to-pre": # flip the input and output
+                        store_output = output_image.clone()
+                        if self.not_input_topography:
+                            output_image = input_stack.clone().to(device)
+                            input_stack = store_output.to(device)
                         else:
-                            input_stack = input_stack.to(device)
-                            output_image = output_image.to(device)
-                        axes[i, 0].imshow(self.tensor_to_numpy(input_stack), vmin=0, vmax=1)
-                        axes[i, 1].imshow(self.tensor_to_numpy(generator(input_stack)), vmin=0, vmax=1)
-                        axes[i, num_cols-1].imshow(self.tensor_to_numpy(output_image), vmin=0, vmax=1)
-                        axes[i, 0].set_title(f"Input ({image_name[0]})")
-                        axes[i, 1].set_title("Generator Output")
-                        axes[i, num_cols-1].set_title("Ground Truth Output")
-                        if self.model_is_attention:
-                            axes[i, 2].imshow(self.tensor_to_numpy(generator.last_attention_mask), cmap="gray_r")
-                            axes[i, 2].set_title("Attention Mask")
-                        if i >= num_images-1:
-                            break
-                    fig.tight_layout()
-                    
-                    images_path = self.create_path(save_type="image", info=f"{split}{'_' + generator_label if len(generators)>1 else ''}")
-                    print(f"Saving {split} {generator_label + ' ' if len(generators)>1 else ''}sample images to {images_path}")
-                    fig.savefig(images_path, bbox_inches="tight")
+                            topography = input_stack[:, 3:, :, :].detach().clone()
+                            output_image = input_stack[:, :3, :, :].clone().to(device)
+                            input_stack = torch.cat((store_output, topography), dim=1).to(device)
+                    else:
+                        input_stack = input_stack.to(device)
+                        output_image = output_image.to(device)
+                    axes[i, 0].imshow(utils.tensor_to_numpy(input_stack), vmin=0, vmax=1)
+                    axes[i, 1].imshow(utils.tensor_to_numpy(generator(input_stack)), vmin=0, vmax=1)
+                    axes[i, num_cols-1].imshow(utils.tensor_to_numpy(output_image), vmin=0, vmax=1)
+                    axes[i, 0].set_title(f"Input ({image_name[0]})")
+                    axes[i, 1].set_title("Generator Output")
+                    axes[i, num_cols-1].set_title("Ground Truth Output")
+                    if self.model_is_attention:
+                        axes[i, 2].imshow(utils.tensor_to_numpy(generator.last_attention_mask), cmap="gray_r")
+                        axes[i, 2].set_title("Attention Mask")
+                    if i >= num_images-1:
+                        break
+                fig.tight_layout()
+                
+                images_path = self.create_path(save_type="image", info=f"{split}{'_' + generator_label if len(generators)>1 else ''}")
+                print(f"Saving {split} {generator_label + ' ' if len(generators)>1 else ''}sample images to {images_path}")
+                fig.savefig(images_path, bbox_inches="tight")
 
-                    plt.close();
+                plt.close();
 
     def train_paired(self):
         """

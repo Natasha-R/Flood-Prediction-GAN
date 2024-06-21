@@ -83,7 +83,7 @@ def determine_dataset(subset, dem, crop=None):
     """
     Determines the image files contained within each dataset subset.
     """
-    dataset_split = pd.read_csv("dataset_split.csv")
+    dataset_split = pd.read_csv("metadata/dataset_split.csv")
     locations = ["usa", "india"]
     disasters = ["hurricane-harvey", "hurricane-florence", "midwest-flooding", "nepal-flooding"]
     

@@ -72,7 +72,7 @@ class ModelsGroup():
         """
         Compare the outputs of each of the models on the given input images.
         """
-        dataset_split = pd.read_csv("dataset_split.csv")
+        dataset_split = pd.read_csv("metadata/dataset_split.csv")
         fig, axes = plt.subplots(nrows=len(image_names), ncols=6, figsize=(30, len(image_names) * 5))
         for ax in axes.ravel():
             ax.set_axis_off()

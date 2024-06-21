@@ -410,7 +410,7 @@ class Model():
         and/or plot a set of images containing all of them.
         """
         # import the input image
-        dataset_split = pd.read_csv("dataset_split.csv")
+        dataset_split = pd.read_csv("metadata/dataset_split.csv")
         dem_string = dataset_split[dataset_split["image"]==image_name][f"{self.dataset_dem}_DEM"].head(1).item()
         input_path = f"{self.data_path}/dataset_input/{image_name}_{dem_string}.tif"
         input_image = torch.from_numpy(tf.imread(input_path).transpose(2, 0, 1))

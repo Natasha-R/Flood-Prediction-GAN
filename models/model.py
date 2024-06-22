@@ -28,7 +28,7 @@ class Model():
                 dataset_dem="best", 
                 data_path=None,
                 num_epochs=1, 
-                not_input_topography=False,
+                topography="all",
                 resize=256,
                 crop=None,
                 save_model_interval=0,
@@ -48,12 +48,12 @@ class Model():
             saved_model = torch.load(pretrained_model_path)
             self.model = saved_model["model"]
             self.num_epochs = saved_model["num_epochs"]
-            self.not_input_topography = saved_model["not_input_topography"]
+            self.topography = saved_model["topography"]
             self.add_identity_loss = saved_model["add_identity_loss"]
         else:
             self.model = model
             self.num_epochs = num_epochs
-            self.not_input_topography = not_input_topography
+            self.topography = topography
             self.add_identity_loss = add_identity_loss
         self.verbose = verbose
         self.save_model_interval = save_model_interval
@@ -70,7 +70,8 @@ class Model():
         self.model_is_attention = self.model_is_attention()
 
         # define the model architectures
-        input_channels = 3 if self.not_input_topography else 9
+        topography_channels = {"all": 9, "map": 6, "dem": 4, "flow": 4, "river": 4, None: 3}
+        input_channels = topography_channels[self.topography]
         torch.manual_seed(self.seed)
         if self.model=="pix2pix":
             generator_architecture = model_architectures.Pix2PixGenerator
@@ -145,7 +146,7 @@ class Model():
         self.train_loader, self.val_loader, _ = data.create_dataset(self.dataset_subset, 
                                                                     self.dataset_dem, 
                                                                     self.data_path, 
-                                                                    self.not_input_topography, 
+                                                                    self.topography, 
                                                                     self.resize, 
                                                                     self.crop)
         
@@ -238,13 +239,12 @@ class Model():
         containing information about the model and dataset.
         """
         file_type = ".png" if save_type=="image" or save_type=="figure" else ".pth.tar"
-        topography = not self.not_input_topography
         model_name = self.prettify_model_name()
         current_time = str(datetime.now())[:-7].replace(' ', '-').replace(':', '-')
         add_identity_loss = f"identity{self.add_identity_loss}" if self.model_is_cycle else ""
         path = (f"{self.data_path}/{save_type}s/"
         f"{model_name}_{info}_epoch{self.current_epoch if self.training_model else self.current_epoch-1}_"
-        f"topography{topography}_{add_identity_loss}_"
+        f"{self.topography}Topography_{add_identity_loss}_"
         f"{self.dataset_subset}Data_{self.dataset_dem}DEM_"
         f"resize{self.resize}_crop{self.crop}_"
         f"date{current_time}{file_type}")
@@ -258,10 +258,10 @@ class Model():
         print(f"\n{'Continuing' if self.load_pretrained_model is True else 'Beginning'} training {self.prettify_model_name()}:")
         print(f"{self.num_epochs} epochs")
         print(f"Starting from epoch {self.starting_epoch}")
-        print(f"Additional topographical factors will {'NOT ' if self.not_input_topography else ''}be input to the model")
+        print(f"{self.topography.title() if self.topography else 'No' } topographical factors will be input to the model")
         if self.model_is_cycle and self.add_identity_loss:
             print(f"Using identity mapping loss")
-        print(f"Dataset: {len(self.train_loader)} images from '{self.dataset_subset}' with '{self.dataset_dem} DEM'")
+        print(f"Dataset: {len(self.train_loader)} images from '{self.dataset_subset}' with '{self.dataset_dem}' DEM")
         print(f"Data resized to {self.resize} pixels with {self.crop} crops, scaled to [-1, 1]")
         print(f"Model saved every {self.save_model_interval} epochs")
         print(f"Sample generator output images saved every {self.save_images_interval} epochs\n")
@@ -331,7 +331,7 @@ class Model():
                     "model": self.model,
                     "starting_epoch": epoch + 1,
                     "num_epochs": self.num_epochs,
-                    "not_input_topography": self.not_input_topography,
+                    "topography": self.topography,
                     "optimizer_generator": self.optimizer_generator.state_dict(),
                     "optimizer_discriminator": self.optimizer_discriminator.state_dict(),
                     "scheduler_generator": self.scheduler_generator.state_dict(),
@@ -420,7 +420,7 @@ class Model():
         input_image, ground_truth, image_name = utils.apply_transformations(image_name=image_name,
                                                                             input_image=input_image, 
                                                                             output_image=ground_truth, 
-                                                                            not_input_topography=self.not_input_topography, 
+                                                                            topography=self.topography, 
                                                                             resize=self.resize, 
                                                                             crop=self.crop, 
                                                                             crop_index=crop_index)
@@ -490,13 +490,13 @@ class Model():
                 for i, (input_stack, output_image, image_name) in enumerate(dataloader):
                     if generator_label=="post-to-pre": # flip the input and output
                         store_output = output_image.clone()
-                        if self.not_input_topography:
+                        if self.topography:
+                            condition = input_stack[:, 3:, :, :].detach().clone()
+                            output_image = input_stack[:, :3, :, :].clone().to(device)
+                            input_stack = torch.cat((store_output, condition), dim=1).to(device)
+                        else:
                             output_image = input_stack.clone().to(device)
                             input_stack = store_output.to(device)
-                        else:
-                            topography = input_stack[:, 3:, :, :].detach().clone()
-                            output_image = input_stack[:, :3, :, :].clone().to(device)
-                            input_stack = torch.cat((store_output, topography), dim=1).to(device)
                     else:
                         input_stack = input_stack.to(device)
                         output_image = output_image.to(device)
@@ -603,14 +603,14 @@ class Model():
                 
                 real_pre_image = input_stack.to(device)
                 real_post_image = output_image.to(device)
-                if not self.not_input_topography:
-                    topography = input_stack[:, 3:, :, :].detach().clone()
-                    real_post_image = torch.cat((real_post_image, topography.detach().clone().to(device)), dim=1)
+                if self.topography:
+                    conditions = input_stack[:, 3:, :, :].detach().clone()
+                    real_post_image = torch.cat((real_post_image, conditions.detach().clone().to(device)), dim=1)
                 synthetic_post_image = self.pre_to_post_generator(real_pre_image)
                 synthetic_pre_image = self.post_to_pre_generator(real_post_image)
-                if not self.not_input_topography:
-                    synthetic_post_image = torch.cat((synthetic_post_image, topography.detach().clone().to(device)), dim=1)
-                    synthetic_pre_image = torch.cat((synthetic_pre_image, topography.detach().clone().to(device)), dim=1)
+                if self.topography:
+                    synthetic_post_image = torch.cat((synthetic_post_image, conditions.detach().clone().to(device)), dim=1)
+                    synthetic_pre_image = torch.cat((synthetic_pre_image, conditions.detach().clone().to(device)), dim=1)
                 recreated_post_image = self.pre_to_post_generator(synthetic_pre_image)  
                 recreated_pre_image = self.post_to_pre_generator(synthetic_post_image)      
 

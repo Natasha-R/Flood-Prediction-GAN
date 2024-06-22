@@ -10,7 +10,7 @@ from torch.utils.data import Dataset, DataLoader
 def create_dataset(dataset_subset,
                    dataset_dem,
                    path, 
-                   not_input_topography,
+                   topography,
                    resize=None, 
                    crop=None,
                    batch_size=1, 
@@ -20,9 +20,9 @@ def create_dataset(dataset_subset,
     dataset_subset : "usa", "india", "hurricane-harvey", "hurricane-florence", "midwest-flooding", "nepal-flooding", "testing", "all"
     dataset_dem : "best, "same"
     """
-    dataset_train = FloodDataset(dataset_subset, dataset_dem, "train", path, not_input_topography, resize, crop)
-    dataset_val = FloodDataset(dataset_subset, dataset_dem, "validation", path, not_input_topography, resize, crop)
-    dataset_test = FloodDataset(dataset_subset, dataset_dem, "test", path, not_input_topography, resize, crop)
+    dataset_train = FloodDataset(dataset_subset, dataset_dem, "train", path, topography, resize, crop)
+    dataset_val = FloodDataset(dataset_subset, dataset_dem, "validation", path, topography, resize, crop)
+    dataset_test = FloodDataset(dataset_subset, dataset_dem, "test", path, topography, resize, crop)
     
     train_loader = DataLoader(dataset=dataset_train,
                               batch_size=batch_size,
@@ -46,12 +46,12 @@ class FloodDataset(Dataset):
     """
     Dataset class for the flood dataset.
     """
-    def __init__(self, dataset_subset, dataset_dem, split, path, not_input_topography, resize, crop):
+    def __init__(self, dataset_subset, dataset_dem, split, path, topography, resize, crop):
         self.data_files = determine_dataset(dataset_subset, dataset_dem, crop)[split]
         self.resize = resize
         self.path = path
         self.crop = crop
-        self.not_input_topography = not_input_topography
+        self.topography = topography
 
     def __getitem__(self, index):
         image = self.data_files[index]
@@ -69,7 +69,7 @@ class FloodDataset(Dataset):
         input_image, output_image, image_name = utils.apply_transformations(image_name=image_name,
                                                                             input_image=input_image, 
                                                                             output_image=output_image, 
-                                                                            not_input_topography=self.not_input_topography, 
+                                                                            topography=self.topography, 
                                                                             resize=self.resize, 
                                                                             crop=self.crop, 
                                                                             crop_index=crop_index,

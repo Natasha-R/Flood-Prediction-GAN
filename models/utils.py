@@ -19,7 +19,7 @@ def tensor_to_numpy(image):
 def apply_transformations(image_name,
                           input_image,
                           output_image,
-                          not_input_topography,
+                          topography,
                           resize,
                           crop,
                           to_loader=False,
@@ -27,11 +27,21 @@ def apply_transformations(image_name,
     """
     Transform the input and output images, by resizing, cropping and normalisation.
     """
-    if not_input_topography:
+    if topography=="dem":
+        input_image = input_image[:4, :, :]
+    elif topography=="flow":
+        input_image = torch.cat((input_image[:3, :, :], input_image[4, :, :].unsqueeze(dim=0)), 0)
+    elif topography=="river":
+        input_image = torch.cat((input_image[:3, :, :], input_image[5, :, :].unsqueeze(dim=0)), 0)
+    elif topography=="map":
+        input_image = torch.cat((input_image[:3, :, :], input_image[6: :, :]), 0)
+    elif topography==None:
         input_image = input_image[:3, :, :]
+
     if resize:
         input_image = Resize(resize, antialias=True, interpolation=InterpolationMode.BICUBIC)(input_image)
         output_image = Resize(resize, antialias=True, interpolation=InterpolationMode.BICUBIC)(output_image)
+
     if crop:
         channels, rows, cols = input_image.shape
         num_divisions = int(np.sqrt(crop))
@@ -44,12 +54,10 @@ def apply_transformations(image_name,
         input_image = input_image[:, start_row:start_row + rows_size, start_col:start_col + cols_size]
         output_image = output_image[:, start_row:start_row + rows_size, start_col:start_col + cols_size]
         image_name = f"{image_name}_{crop_index}"
-    if not_input_topography:
-        input_image = Normalize(mean=(0.5, 0.5, 0.5), 
-                        std=(0.5, 0.5, 0.5))(input_image)
-    else:
-        input_image = Normalize(mean=(0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5), 
-                                std=(0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5))(input_image)
+
+    topography_channels = {"all": 9, "map": 6, "dem": 4, "flow": 4, "river": 4, None: 3}
+    input_image = Normalize(mean=(0.5,)*topography_channels[topography], 
+                            std=(0.5,)*topography_channels[topography])(input_image)
     output_image = Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))(output_image)
 
     if to_loader==False:

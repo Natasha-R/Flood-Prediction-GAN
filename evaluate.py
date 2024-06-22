@@ -4,7 +4,7 @@ import os
 import argparse
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Evaluate a trained Pix2Pix, CycleGAN, AttentionGAN or PairedAttention model on the flood images dataset.")
+    parser = argparse.ArgumentParser(description="Evaluate a trained Pix2Pix, CycleGAN, AttentionGAN or PairedAttention model on the flood images dataset")
     parser.add_argument("--model", required=True, help="Model can be one of: Pix2Pix, CycleGAN, AttentionGAN or PairedAttention")
     parser.add_argument("--dataset_subset", default="all", help="Specify the dataset subset, e.g. USA, India, Hurricane-Harvey")
     parser.add_argument("--dataset_dem", required=True, help="Specify whether the DEM used should be 'best' available or all the 'same'")
@@ -12,7 +12,7 @@ if __name__ == "__main__":
     parser.add_argument("--resize", type=int, default=None, help="Resize the images to the given size. The resize is applied before the crop")
     parser.add_argument("--crop", type=int, default=None, help="Crop each image into the given number of images. The resize is applied before the crop")
     parser.add_argument("--crop_index", type=int, default=0, help="When saving an image with the crop transformation, the crop_index indicates which quadrant to save")
-    parser.add_argument("--not_input_topography", default=False, action="store_true", help="The additional topographical factors will NOT be input to the model")
+    parser.add_argument("--topography", default=None, help="Which topographical factors should be input to the model. 'all', 'dem', 'map', 'flow', or 'river'")
     parser.add_argument("--pretrained_model_path", required=True, help="Path to a pretrained model")
     parser.add_argument("--plot_losses", action="store_true", default=False, help="")
     parser.add_argument("--plot_sample_images", action="store_true", default=False, help="Plot 'num_images' generated images from the training and validation dataset")
@@ -37,7 +37,7 @@ if __name__ == "__main__":
                                  pretrained_model_path=args.pretrained_model_path,
                                  training_model=False,
                                  seed=args.seed,
-                                 not_input_topography=args.not_input_topography)
+                                 topography=args.topography)
 
     if args.plot_losses:
         evaluate_model.plot_losses()

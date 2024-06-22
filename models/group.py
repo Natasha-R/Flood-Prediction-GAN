@@ -25,7 +25,7 @@ class ModelsGroup():
                  resize,
                  crop,
                  crop_index,
-                 not_input_topography):
+                 topography):
 
         self.pix2pix_path = pix2pix_path
         self.cyclegan_path = cyclegan_path
@@ -37,7 +37,7 @@ class ModelsGroup():
         self.resize = resize
         self.crop = crop
         self.crop_index = crop_index
-        self.not_input_topography = not_input_topography
+        self.topography = topography
 
         self.generators = dict()
         for model_name, model_path in zip(["Pix2Pix", "CycleGAN", "AttentionGAN", "PairedAttention"],
@@ -53,7 +53,7 @@ class ModelsGroup():
                                      load_pretrained_model=True,
                                      pretrained_model_path=model_path,
                                      training_model=False,
-                                     not_input_topography=self.not_input_topography)
+                                     topography=self.topography)
             self.generators[model_name] = full_model.pre_to_post_generator if full_model.model_is_cycle else full_model.generator
     
     def create_path(self):
@@ -62,7 +62,7 @@ class ModelsGroup():
         """
         current_time = str(datetime.now())[:-7].replace(' ', '-').replace(':', '-')
         path = (f"{self.data_path}/images/"
-                f"models_comparison_topography{not self.not_input_topography}_"
+                f"models_comparison_{self.topography}Topography"
                 f"{self.dataset_subset}Data_{self.dataset_dem}DEM_"
                 f"resize{self.resize}_crop{self.crop}_"
                 f"date{current_time}.png")
@@ -87,7 +87,7 @@ class ModelsGroup():
             input_image, ground_truth, image_name = utils.apply_transformations(image_name=image_name,
                                                                                 input_image=input_image, 
                                                                                 output_image=ground_truth, 
-                                                                                not_input_topography=self.not_input_topography, 
+                                                                                topography=self.topography, 
                                                                                 resize=self.resize, 
                                                                                 crop=self.crop, 
                                                                                 crop_index=self.crop_index)

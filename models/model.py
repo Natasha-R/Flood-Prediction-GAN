@@ -360,7 +360,7 @@ class Model():
         """
         if self.model_is_cycle:
             plot_parameters = {"all_losses_generator_post": {"colour":"#7BA4A9", "label":"Generator (post)", "linestyle":(0, (3, 1)), "plot":0},
-                            "all_losses_generator_pre": {"colour":"#7BA4A9", "label":"Generator (pre)", "plot":0},
+                            "all_losses_generator_pre": {"colour":"#7BA4A9", "label":"Generator (pre)", "linestyle":"solid", "plot":0},
                             "all_losses_pre_to_post_cycle": {"colour":"#7BA4A9", "label":"Pre to post cycle loss", "linestyle":"solid", "plot":1},
                             "all_losses_post_to_pre_cycle": {"colour":"#9F799B", "label":"Post to pre cycle loss", "linestyle":"solid", "plot":1},
                             "all_losses_discriminator_pre_real": {"colour":"#5F2959", "label":"Discriminator (pre, real)", "linestyle":"solid", "plot":0},
@@ -377,7 +377,7 @@ class Model():
                             "all_l1_losses_generator_synthetic": {"colour":"black", "label":"L1 loss", "linestyle":"solid", "plot":1}}
             
         num_plots = 3 if self.add_identity_loss else 2
-        fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(10, num_plots * 7))
+        fig, axes = plt.subplots(nrows=num_plots, ncols=1, figsize=(10, num_plots * 7))
         for ax in axes.ravel():
             ax.tick_params(axis="both", which="major", labelsize=14)
             ax.set_xlabel("Epoch", fontsize=14)
@@ -385,10 +385,11 @@ class Model():
         for loss in self.all_losses.keys():
             parameters = plot_parameters[loss]
             axes[parameters["plot"]].plot(range(1, self.starting_epoch),
-                                    self.all_losses[loss],
-                                    c=parameters["colour"], 
-                                    label=parameters["label"],
-                                    linewidth=2)
+                                          self.all_losses[loss],
+                                          c=parameters["colour"], 
+                                          linestyle=parameters["linestyle"],
+                                          label=parameters["label"],
+                                          linewidth=2)
         axes[0].set_title(f"{self.prettify_model_name()} Discriminator and Generator Losses", fontsize=15)
         axes[1].set_title(f"{self.prettify_model_name()} {'Cycle Losses' if self.model_is_cycle else 'L1 Losses'}", fontsize=15)
         axes[0].legend(fontsize=14)

@@ -15,6 +15,10 @@ import matplotlib.pyplot as plt
 import torch
 from torch import nn
 from torch.optim import lr_scheduler
+from torchmetrics.image import PeakSignalNoiseRatio, MultiScaleStructuralSimilarityIndexMeasure, StructuralSimilarityIndexMeasure
+from torchmetrics.image.lpip import LearnedPerceptualImagePatchSimilarity
+from torchmetrics.image.fid import FrechetInceptionDistance
+
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -143,12 +147,12 @@ class Model():
         self.current_epoch = self.starting_epoch
         
         # load the data
-        self.train_loader, self.val_loader, _ = data.create_dataset(self.dataset_subset, 
-                                                                    self.dataset_dem, 
-                                                                    self.data_path, 
-                                                                    self.topography, 
-                                                                    self.resize, 
-                                                                    self.crop)
+        self.train_loader, self.val_loader, self.test_loader = data.create_dataset(self.dataset_subset, 
+                                                                                   self.dataset_dem, 
+                                                                                   self.data_path, 
+                                                                                   self.topography, 
+                                                                                   self.resize, 
+                                                                                   self.crop)
         
         # print training set-up
         if self.verbose and self.training_model:
@@ -354,6 +358,41 @@ class Model():
         if self.save_images_interval != 0 and ((epoch % self.save_images_interval) == 0):
             self.plot_sample_images(num_images=5)
 
+    def calculate_metrics(self):
+        """
+        Calculate metrics for the model.
+        """
+        metrics = {"PSNR": PeakSignalNoiseRatio(data_range=(0, 1)).to(device),
+                    "SSIM": StructuralSimilarityIndexMeasure(data_range=(0, 1)).to(device),
+                    "MS-SSIM": MultiScaleStructuralSimilarityIndexMeasure(data_range=(0, 1)).to(device),
+                    "LPIPS": LearnedPerceptualImagePatchSimilarity().to(device)}
+        fid = FrechetInceptionDistance(normalize=True).to(device)
+        metrics_results = {metric: list() for metric in list(metrics.keys()) + ["Inference"]}
+
+        print("\nCalculating metrics...")
+        for input_stack, ground_truth, _ in tqdm(self.val_loader, desc="Images", leave=False):
+
+            input_stack = utils.extract_input_topography(input_stack, self.topography).detach().clone().to(device)
+            ground_truth = ground_truth.to(device)
+            start_time = time.time()
+            torch.manual_seed(47)
+            generator = self.pre_to_post_generator if self.model_is_cycle else self.generator
+            generator_output = generator(input_stack)
+            inference_time = time.time()-start_time
+            ground_truth = torch.clamp((ground_truth + 1) * 0.5, min=0, max=1)
+            generator_output = torch.clamp((generator_output + 1) * 0.5, min=0, max=1)
+
+            for metrics_name in metrics:
+                metrics_results[metrics_name].append(metrics[metrics_name](generator_output.detach().clone(), ground_truth.detach().clone()).item())
+                metrics[metrics_name].reset()
+            fid.update(ground_truth.detach().clone(), real=True)
+            fid.update(generator_output.detach().clone(), real=False)
+            metrics_results["Inference"].append(inference_time)
+
+        for metrics_name in metrics_results:
+            print(f"{metrics_name}: {np.mean(metrics_results[metrics_name]):.3f} +/- {np.std(metrics_results[metrics_name], ddof=1) / np.sqrt(len(metrics_results[metrics_name])):.3f}")
+        print(f"FID: {fid.compute().item():.3f}")
+
     def plot_losses(self):
         """
         Plot the training losses over the epochs.
@@ -426,6 +465,7 @@ class Model():
                                                                             crop=self.crop, 
                                                                             crop_index=crop_index)
         generator = self.pre_to_post_generator if self.model_is_cycle else self.generator
+        torch.manual_seed(47)
         generator_output = utils.tensor_to_numpy(generator(input_image))
 
         # plot the image
@@ -470,7 +510,7 @@ class Model():
             fig.savefig(images_path, bbox_inches="tight")
             plt.close()
 
-    def plot_sample_images(self, num_images):
+    def plot_sample_images(self, num_images, use_test_data):
         """
         Plot 'num_images' random sample generator output images from both the training and validation datasets.
         The randomness of the images can be controlled via the seed.
@@ -480,9 +520,14 @@ class Model():
                           ("post-to-pre", self.post_to_pre_generator)]
         else:
             generators = [("pre-to-post", self.generator)]
-
+        splits = ["training", "validation"]
+        loaders = [self.train_loader, self.val_loader]
+        if use_test_data:
+            splits += ["test"]
+            loaders += [self.test_loader]
+            
         for generator_label, generator in generators:
-            for split, dataloader in zip(["training", "validation"], [self.train_loader, self.val_loader]):
+            for split, dataloader in zip(splits, loaders):
                 num_cols = 4 if self.model_is_attention else 3
                 fig, axes = plt.subplots(nrows=num_images, ncols=num_cols, figsize=(num_cols * 5, num_images * 5))
                 for ax in axes.ravel():
@@ -502,6 +547,7 @@ class Model():
                         input_stack = input_stack.to(device)
                         output_image = output_image.to(device)
                     axes[i, 0].imshow(utils.tensor_to_numpy(input_stack), vmin=0, vmax=1)
+                    torch.manual_seed(47)
                     axes[i, 1].imshow(utils.tensor_to_numpy(generator(input_stack)), vmin=0, vmax=1)
                     axes[i, num_cols-1].imshow(utils.tensor_to_numpy(output_image), vmin=0, vmax=1)
                     axes[i, 0].set_title(f"Input ({image_name[0]})")

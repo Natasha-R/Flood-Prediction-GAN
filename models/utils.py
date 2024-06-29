@@ -65,3 +65,15 @@ def apply_transformations(image_name,
         output_image = torch.unsqueeze(output_image, dim=0).to(device)
 
     return input_image, output_image, image_name
+
+def extract_input_topography(input_image, topography):
+    """
+    When comparing models with different topography inputs, extract the correct topography from the input image.
+    """
+    topography_inputs = {"all": input_image,
+                         "dem" : input_image[:, :4, :, :],
+                         "flow" : torch.cat((input_image[:, :3, :, :], input_image[:, 4, :, :].unsqueeze(dim=0)), 1),
+                         "river" : torch.cat((input_image[:, :3, :, :], input_image[:, 5, :, :].unsqueeze(dim=0)), 1),
+                         "map" : torch.cat((input_image[:, :3, :, :], input_image[:, 6: :, :]), 1),
+                         "none" : input_image[:, :3, :, :]}
+    return topography_inputs[topography]

@@ -8,6 +8,7 @@ if __name__ == "__main__":
     parser.add_argument("--model", required=True, help="Model can be one of: Pix2Pix, CycleGAN, AttentionGAN or PairedAttention")
     parser.add_argument("--dataset_subset", default="all", help="Specify the dataset subset, e.g. USA, India, Hurricane-Harvey")
     parser.add_argument("--dataset_dem", required=True, help="Specify whether the DEM used should be 'best' available or all the 'same'")
+    parser.add_argument("--use_test_data", action="store_true", default=False, help="Use the test dataset instead of the validation dataset.")
     parser.add_argument("--data_path", required=True, help="The path to the location of the data folder. Example: 'C:/data'")
     parser.add_argument("--resize", type=int, default=None, help="Resize the images to the given size. The resize is applied before the crop")
     parser.add_argument("--crop", type=int, default=None, help="Crop each image into the given number of images. The resize is applied before the crop")
@@ -21,6 +22,8 @@ if __name__ == "__main__":
     parser.add_argument("--image_name", default=None, help="The name of the image to plot")
     parser.add_argument("--plot_single_image", default=None, help="Plot a single image of the given type, must be one of 'input' 'ground truth' 'output' or 'attention mask'")
     parser.add_argument("--plot_image_set", action="store_true", default=False, help="Plot a set of input, ground truth, output and attention mask (if appropriate)")
+    parser.add_argument("--calculate_metrics", action="store_true", default=False, help="Calculate metrics for the current model")
+
     args = parser.parse_args()
     args.model = args.model.lower()
 
@@ -37,13 +40,15 @@ if __name__ == "__main__":
                                  pretrained_model_path=args.pretrained_model_path,
                                  training_model=False,
                                  seed=args.seed,
-                                 topography=args.topography)
+                                 topography=args.topography,
+                                 verbose=True)
 
     if args.plot_losses:
         evaluate_model.plot_losses()
 
     if args.plot_sample_images:
-        evaluate_model.plot_sample_images(args.num_images)
+        evaluate_model.plot_sample_images(args.num_images,
+                                          args.use_test_data)
     
     if args.plot_single_image or args.plot_image_set:
         if not args.image_name:
@@ -52,3 +57,6 @@ if __name__ == "__main__":
                                   plot_single_image=args.plot_single_image,
                                   plot_image_set=args.plot_image_set,
                                   crop_index=args.crop_index)
+        
+    if args.calculate_metrics:
+        evaluate_model.calculate_metrics()

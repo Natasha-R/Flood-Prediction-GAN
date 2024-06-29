@@ -1,7 +1,10 @@
 import pandas as pd
 import plotly.express as px
 
-metadata = pd.read_csv("metadata/metadata.csv")
+metadata = pd.read_csv("../metadata/metadata.csv")
+
+print("\nNumber of images from each disaster:")
+print(metadata["disaster"].value_counts())
 
 print("\nTime difference between the capture of the pre- and post-flooding satellite images:")
 print(metadata.groupby("disaster")["days_difference"].value_counts())

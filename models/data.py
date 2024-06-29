@@ -72,8 +72,8 @@ class FloodDataset(Dataset):
                                                                             topography=self.topography, 
                                                                             resize=self.resize, 
                                                                             crop=self.crop, 
-                                                                            crop_index=crop_index,
-                                                                            to_loader=True)
+                                                                            to_loader=True,
+                                                                            crop_index=crop_index)
         return input_image, output_image, image_name
 
     def __len__(self):
@@ -91,6 +91,17 @@ def determine_dataset(subset, dem, crop=None):
         dataset = dataset_split[dataset_split["country"]==subset.lower()].copy()
     elif subset.lower() in disasters:
         dataset = dataset_split[dataset_split["disaster"]==subset.lower()].copy()
+    elif subset=="harveyflorence":
+        dataset = dataset_split[dataset_split["country"]=="usa"].copy()
+        flipped_test = dataset[((dataset["disaster"]=="hurricane-harvey") | (dataset["disaster"]=="hurricane-florence")) & (dataset["split"]=="test")].copy()
+        flipped_test["version"] = "flipped"
+        dataset = pd.concat([dataset, flipped_test], axis=0)
+        dataset.loc[(dataset["disaster"]=="hurricane-harvey") | (dataset["disaster"]=="hurricane-florence"), "split"] = "train"
+        dataset.loc[dataset["disaster"]=="midwest-flooding", "split"] = "validation"
+        all_val = dataset[dataset["disaster"]=="midwest-flooding"].copy()
+        all_val["split"] = "test"
+        dataset = pd.concat([dataset, all_val], axis=0).reset_index(drop=True)
+        dataset = dataset.drop(dataset[((dataset["split"] == "test") | (dataset["split"] == "validation")) & (dataset["version"] == "flipped")].index)
     elif subset=="testing":
         dataset = dataset_split[dataset_split["disaster"]=="hurricane-harvey"].copy()
         dataset = dataset[dataset["version"]=="original"]
@@ -104,7 +115,7 @@ def determine_dataset(subset, dem, crop=None):
         
     dataset["file_name"] = dataset["image"] + "_" + dataset[f"{dem}_DEM"] + ".tif"
     dataset = dataset.sample(frac=1, random_state=47)
-        
+    
     if crop:
         crops = [dataset.copy() for i in range(crop)] 
         for i in range(crop):

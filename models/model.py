@@ -19,7 +19,6 @@ from torchmetrics.image import PeakSignalNoiseRatio, MultiScaleStructuralSimilar
 from torchmetrics.image.lpip import LearnedPerceptualImagePatchSimilarity
 from torchmetrics.image.fid import FrechetInceptionDistance
 
-
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 class Model():
@@ -147,7 +146,7 @@ class Model():
         self.current_epoch = self.starting_epoch
         
         # load the data
-        self.train_loader, self.val_loader, self.test_loader = data.create_dataset(self.dataset_subset, 
+        self.train_loader, self.val_loader, self.test_loader = data.create_flood_dataset(self.dataset_subset, 
                                                                                    self.dataset_dem, 
                                                                                    self.data_path, 
                                                                                    self.topography, 
@@ -356,7 +355,7 @@ class Model():
             torch.save(saved_model, model_path)
 
         if self.save_images_interval != 0 and ((epoch % self.save_images_interval) == 0):
-            self.plot_sample_images(num_images=5)
+            self.plot_sample_images(num_images=5, use_test_data=False)
 
     def calculate_metrics(self):
         """

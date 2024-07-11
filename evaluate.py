@@ -15,7 +15,7 @@ if __name__ == "__main__":
     parser.add_argument("--crop_index", type=int, default=0, help="When saving an image with the crop transformation, the crop_index indicates which quadrant to save")
     parser.add_argument("--topography", default=None, help="Which topographical factors should be input to the model. 'all', 'dem', 'map', 'flow', or 'river'")
     parser.add_argument("--pretrained_model_path", required=True, help="Path to a pretrained model")
-    parser.add_argument("--plot_losses", action="store_true", default=False, help="")
+    parser.add_argument("--plot_losses", action="store_true", default=False, help="Plot the model losses figure")
     parser.add_argument("--plot_sample_images", action="store_true", default=False, help="Plot 'num_images' generated images from the training and validation dataset")
     parser.add_argument("--num_images", type=int, default=5, help="When plotting sample images, num_images indicates how many generated images to plot")
     parser.add_argument("--seed", type=int, default=47, help="The random seed to generate sample images")

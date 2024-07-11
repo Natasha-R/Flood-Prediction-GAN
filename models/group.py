@@ -71,7 +71,7 @@ class ModelsGroup():
 
         # initialise data
         overall_topography = "all" if self.compare == "topography" else self.topography
-        self.train_loader, self.val_loader, self.test_loader = data.create_dataset(self.dataset_subset, 
+        self.train_loader, self.val_loader, self.test_loader = data.create_flood_dataset(self.dataset_subset, 
                                                                                    self.dataset_dem, 
                                                                                    self.data_path, 
                                                                                    overall_topography, 

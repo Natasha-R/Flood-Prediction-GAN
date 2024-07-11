@@ -123,6 +123,32 @@ def create_dataset_split_metadata(metadata_path, path):
 
     dataset_split.to_csv("dataset_split.csv", index=False)
 
+def create_masks_metadata(masks_path, country):
+    # create the metadata for training the flood segmentation model on mask data
+    masks_metadata = pd.DataFrame({"image": [image_name for image_name in os.listdir(masks_path)]})
+    train_masks_metadata = masks_metadata.sample(frac=0.8, random_state=47)
+    val_test_masks_metadata = masks_metadata[~masks_metadata.index.isin(train_masks_metadata.index)]
+
+    train_masks_metadata["split"] = "train"
+    train_masks_metadata["version"] = "original"
+    flipped_masks_train = train_masks_metadata.copy()
+    flipped_masks_train["version"] = "flipped"
+
+    val_masks_metadata = val_test_masks_metadata.sample(frac=0.5, random_state=47)
+    test_masks_metadata = val_test_masks_metadata[~val_test_masks_metadata.index.isin(val_masks_metadata.index)]
+    val_masks_metadata["split"] = "validation"
+    val_masks_metadata["version"] = "original"
+    test_masks_metadata["split"] = "test"
+    test_masks_metadata["version"] = "original"
+
+    val_test_masks_metadata["version"] = "flipped"
+    val_test_masks_metadata["split"] = None
+
+    masks_metadata = pd.concat([train_masks_metadata, flipped_masks_train, val_masks_metadata, test_masks_metadata, val_test_masks_metadata])
+    masks_metadata["country"] = country
+
+    masks_metadata.to_csv("metadata/masks_metadata.csv", index=False)
+
 ### Digital Elevation Model ####################################
 
 def download_DEM(metadata_path, api_key, path, api_name="usgsdem", resolution="10m"):

@@ -12,6 +12,13 @@ if __name__ == "__main__":
     parser.add_argument("--crop_index", type=int, default=0, help="When saving an image with the crop transformation, the crop_index indicates which quadrant to save")
     parser.add_argument("--topography", default=None, help="Which topographical factors should be input to the model. 'all', 'dem', 'map', 'flow', or 'river'")
 
+    parser.add_argument("--segmentation_model_path", default=None, help="Path to a pre-trained flood segmentation model")
+
+    parser.add_argument("--pix2pix_path", default=None, help="Path to the pretrained Pix2Pix model")
+    parser.add_argument("--cyclegan_path", default=None, help="Path to the pretrained CycleGAN model")
+    parser.add_argument("--attentiongan_path", default=None, help="Path to the pretrained AttentionGAN model")
+    parser.add_argument("--pairedattention_path", default=None, help="Path to the pretrained PairedAttention model")
+
     parser.add_argument("--all_topography_path", default=None, help="Path to a model trained on all topography")
     parser.add_argument("--none_topography_path", default=None, help="Path to a model trained on no topography")
     parser.add_argument("--dem_topography_path", default=None, help="Path to a model trained on only DEM topography")
@@ -19,23 +26,13 @@ if __name__ == "__main__":
     parser.add_argument("--flow_topography_path", default=None, help="Path to a model trained on on only flow accumulation topography")
     parser.add_argument("--map_topography_path", default=None, help="Path to a model trained on on only map topography")
 
-    parser.add_argument("--pix2pix_path", default=None, help="Path to the pretrained Pix2Pix model")
-    parser.add_argument("--cyclegan_path", default=None, help="Path to the pretrained CycleGAN model")
-    parser.add_argument("--attentiongan_path", default=None, help="Path to the pretrained AttentionGAN model")
-    parser.add_argument("--pairedattention_path", default=None, help="Path to the pretrained PairedAttention model")
+    parser.add_argument("--model_1_path", default=None, help="Path to pre-trained model 1")
+    parser.add_argument("--model_2_path", default=None, help="Path to pre-trained model 2")
 
-    parser.add_argument("--india_alone_path", default=None, help="Path to a model trained on data from India")
-    parser.add_argument("--india_pretrained_path", default=None, help="Path to a model pretrained on US data, and then trained on data from India")
-
-    parser.add_argument("--compare", required=True, help="Compare the performance of either 'models' 'topgoraphy' or 'generalise'")
+    parser.add_argument("--compare", required=True, help="Compare the performance of either 'models' 'topgoraphy' or 'two'")
     parser.add_argument("--image_names", default=None, nargs="+", help=("The names of the images to compare on the models." 
                                                                         "Optionally add '_index' to the end of image names to specify the crop index"))
-    parser.add_argument("--calculate_metrics", action="store_true", default=False, help=("Calculate the PSNR (peak signal-to-noise ratio), "
-                                                                                         "SSIM (structural similarity index measure, "
-                                                                                         "MS-SSIM (multi-scale structural similarity), "
-                                                                                         "LPIPS (learned perceptual image patch similarity), "
-                                                                                         "FID (Fréchet inception distance), "
-                                                                                         "and inference time needed"))
+    parser.add_argument("--calculate_metrics", action="store_true", default=False, help=("Calculate automated metrics to compare the models"))
 
     args = parser.parse_args()
 
@@ -57,12 +54,12 @@ if __name__ == "__main__":
                  "Flow": args.flow_topography_path,
                  "Map": args.map_topography_path}
 
-    elif args.compare == "generalise":
-        paths = {"India Alone": args.india_alone_path,
-                 "Pretrained on US -> India": args.india_pretrained_path}
+    elif args.compare == "two":
+        paths = {"Model 1": args.model_1_path,
+                 "Model 2": args.model_2_path}
 
     else:
-        raise NotImplementedError("Comparisons must be made between 'models' 'topography' or 'generalise'")
+        raise NotImplementedError("Comparisons must be made between 'models' 'topography' or 'two'")
     
     all_models = group.ModelsGroup(paths=paths,
                                    compare=args.compare,
@@ -75,7 +72,10 @@ if __name__ == "__main__":
                                    topography=args.topography)
     
     if args.calculate_metrics:
-        all_models.compare_metrics(args.use_test_data)
+        if not args.segmentation_model_path:
+            raise ValueError("To calculate metrics, a pre-trained flood segmentation model must be provided.")
+        all_models.compare_metrics(args.use_test_data, args.segmentation_model_path)
+
     if args.image_names:
         all_models.compare_output_images(args.image_names)
 

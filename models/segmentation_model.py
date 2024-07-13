@@ -3,6 +3,7 @@ from models import model_architectures
 
 import time
 import numpy as np
+import tifffile as tf
 from tqdm import tqdm
 from datetime import datetime
 import matplotlib.pyplot as plt
@@ -21,18 +22,17 @@ class SegmentationModel():
     A class encapsulating the attributes and functions for training and evaluating the flood segmentation model.
     """
     def __init__(self,
-                 dataset_subset,
-                 data_path,
-                 num_epochs,
-                 train_on_all,
-                 save_model_interval,
-                 save_images_interval,
-                 verbose,
-                 pretrained_model_path,
-                 train,
-                 learning_rate,
-                 batch_size,
-                 seed):
+                 dataset_subset="usa",
+                 data_path=None,
+                 num_epochs=100,
+                 train_on_all=False,
+                 save_model_interval=0,
+                 save_images_interval=0,
+                 verbose=True,
+                 pretrained_model_path=None,
+                 train=False,
+                 plot_mask_image=None,
+                 seed=47):
     
         if verbose:
             print("\nSetting up the flood segmentation model...") 
@@ -46,8 +46,6 @@ class SegmentationModel():
         self.train_on_all = train_on_all
         self.train = train
         self.pretrained_model_path = pretrained_model_path
-        self.learning_rate = learning_rate
-        self.batch_size = batch_size
         self.seed = seed
         self.starting_epoch = 1
         self.current_epoch = 1
@@ -65,13 +63,12 @@ class SegmentationModel():
             self.all_accuracies = saved_model["all_accuracies"]
 
         self.loss_func = nn.BCEWithLogitsLoss()
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate, betas=(0.5, 0.999))
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=0.0001, betas=(0.5, 0.999))
         self.scheduler = lr_scheduler.LambdaLR(self.optimizer, lr_lambda=self.lambda_rule)
 
         self.train_loader, self.val_loader, self.test_loader = data.create_masks_dataset(dataset_subset = self.dataset_subset,
                                                                                          path = self.data_path,
-                                                                                         train_on_all = self.train_on_all,
-                                                                                         batch_size = self.batch_size)
+                                                                                         train_on_all = self.train_on_all)
         
     def initialise_weights(self, m):
         """
@@ -141,8 +138,7 @@ class SegmentationModel():
         """
         train_loader, val_loader, test_loader = data.create_masks_dataset(dataset_subset=self.dataset_subset,
                                                                             path=self.data_path,
-                                                                            train_on_all=self.train_on_all,
-                                                                            batch_size=1)
+                                                                            train_on_all=self.train_on_all)
         dataloader = test_loader if use_test_data else val_loader
 
         metrics = {"MSE":MeanSquaredError().to(device),
@@ -195,6 +191,19 @@ class SegmentationModel():
         print(f"Saving losses figure to {losses_path}")
         fig.savefig(losses_path, bbox_inches="tight")
     
+    def plot_mask_image(self, path_to_image):
+        """
+        Plot and save the predicted segmentation mask for the given image.
+        """
+        image_name = path_to_image.split("/")[-1][:-4]
+        input_image = torch.from_numpy(plt.imread(path_to_image)[:, :, :3].transpose(2, 0, 1)).unsqueeze(dim=0).to(device)
+        predicted_mask = self.tensor_to_mask(self.model(input_image), predicted=True).squeeze().cpu().numpy()
+
+        current_time = str(datetime.now())[:-7].replace(' ', '-').replace(':', '-')
+        path_to_mask = f"{self.data_path}/images/SegmentationMask_{image_name}_{current_time}.png"
+        print(f"\nSaving segmentation mask for '{image_name}' to {path_to_mask}")
+        plt.imsave(path_to_mask, predicted_mask, vmin=0, vmax=1, cmap="gray")
+
     def plot_sample_images(self, num_images, use_test_data=False):
         """
         Plot 'num_images' random sample generator output images from the validation dataset.

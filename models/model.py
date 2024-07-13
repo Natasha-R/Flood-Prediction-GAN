@@ -1,5 +1,6 @@
 from models import data
 from models import utils
+from models import segmentation_model
 from models import model_architectures
 
 import time
@@ -15,9 +16,12 @@ import matplotlib.pyplot as plt
 import torch
 from torch import nn
 from torch.optim import lr_scheduler
-from torchmetrics.image import PeakSignalNoiseRatio, MultiScaleStructuralSimilarityIndexMeasure, StructuralSimilarityIndexMeasure
-from torchmetrics.image.lpip import LearnedPerceptualImagePatchSimilarity
 from torchmetrics.image.fid import FrechetInceptionDistance
+from torchmetrics.regression import MeanSquaredError, R2Score
+from torchmetrics.segmentation import GeneralizedDiceScore, MeanIoU
+from torchmetrics.image.lpip import LearnedPerceptualImagePatchSimilarity
+from torchmetrics.classification import BinaryAccuracy, BinaryF1Score, BinaryPrecision, BinaryRecall
+from torchmetrics.image import PeakSignalNoiseRatio, MultiScaleStructuralSimilarityIndexMeasure, StructuralSimilarityIndexMeasure
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -357,19 +361,31 @@ class Model():
         if self.save_images_interval != 0 and ((epoch % self.save_images_interval) == 0):
             self.plot_sample_images(num_images=5, use_test_data=False)
 
-    def calculate_metrics(self):
+    def calculate_metrics(self, use_test_data=False, seg_model_path=None):
         """
         Calculate metrics for the model.
         """
         metrics = {"PSNR": PeakSignalNoiseRatio(data_range=(0, 1)).to(device),
                     "SSIM": StructuralSimilarityIndexMeasure(data_range=(0, 1)).to(device),
                     "MS-SSIM": MultiScaleStructuralSimilarityIndexMeasure(data_range=(0, 1)).to(device),
-                    "LPIPS": LearnedPerceptualImagePatchSimilarity().to(device)}
+                    "LPIPS": LearnedPerceptualImagePatchSimilarity().to(device),
+                    "MSE":MeanSquaredError().to(device),
+                    "R2":R2Score().to(device),
+                    "Accuracy":BinaryAccuracy().to(device),
+                    "F1":BinaryF1Score().to(device),
+                    "Precision":BinaryPrecision().to(device),
+                    "Recall":BinaryRecall().to(device),
+                    "IOU":MeanIoU(num_classes=1).to(device),
+                    "Dice":GeneralizedDiceScore(num_classes=1).to(device)}
         fid = FrechetInceptionDistance(normalize=True).to(device)
         metrics_results = {metric: list() for metric in list(metrics.keys()) + ["Inference"]}
+        seg_model = segmentation_model.SegmentationModel(data_path=self.data_path,
+                                                         pretrained_model_path=seg_model_path,
+                                                         train=False).model
 
         print("\nCalculating metrics...")
-        for input_stack, ground_truth, _ in tqdm(self.val_loader, desc="Images", leave=False):
+        loader = self.test_loader if use_test_data else self.val_loader
+        for input_stack, ground_truth, _ in tqdm(loader, desc="Images", leave=False):
 
             input_stack = utils.extract_input_topography(input_stack, self.topography).detach().clone().to(device)
             ground_truth = ground_truth.to(device)
@@ -380,10 +396,21 @@ class Model():
             inference_time = time.time()-start_time
             ground_truth = torch.clamp((ground_truth + 1) * 0.5, min=0, max=1)
             generator_output = torch.clamp((generator_output + 1) * 0.5, min=0, max=1)
+            output_mask = (torch.sigmoid(seg_model(generator_output.detach().clone())) > 0.5).float()
+            true_mask = (torch.sigmoid(seg_model(ground_truth.detach().clone())) > 0.5).float()
 
-            for metrics_name in metrics:
+            flat_true_mask = true_mask.squeeze().flatten()
+            flat_output_mask = output_mask.squeeze().flatten()
+            int_true_mask = true_mask.int()
+            int_output_mask = output_mask.int()
+
+            for metrics_name in ["PSNR", "SSIM", "MS-SSIM", "LPIPS"]:
                 metrics_results[metrics_name].append(metrics[metrics_name](generator_output.detach().clone(), ground_truth.detach().clone()).item())
                 metrics[metrics_name].reset()
+            for metrics_name in ["MSE", "R2", "Accuracy", "F1", "Precision", "Recall"]:
+                metrics_results[metrics_name].append(metrics[metrics_name](flat_output_mask.detach().clone(), flat_true_mask.detach().clone()).item())
+            for metrics_name in ["IOU", "Dice"]:
+                metrics_results[metrics_name].append(metrics[metrics_name](int_output_mask.detach().clone(), int_true_mask.detach().clone()).item())
             fid.update(ground_truth.detach().clone(), real=True)
             fid.update(generator_output.detach().clone(), real=False)
             metrics_results["Inference"].append(inference_time)

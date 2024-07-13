@@ -1,6 +1,7 @@
 from models import model
 from models import utils
 from models import data
+from models import segmentation_model
 
 import os
 
@@ -14,9 +15,12 @@ import matplotlib.pyplot as plt
 from collections import defaultdict
 
 import torch
-from torchmetrics.image import PeakSignalNoiseRatio, MultiScaleStructuralSimilarityIndexMeasure, StructuralSimilarityIndexMeasure
-from torchmetrics.image.lpip import LearnedPerceptualImagePatchSimilarity
 from torchmetrics.image.fid import FrechetInceptionDistance
+from torchmetrics.regression import MeanSquaredError, R2Score
+from torchmetrics.segmentation import GeneralizedDiceScore, MeanIoU
+from torchmetrics.image.lpip import LearnedPerceptualImagePatchSimilarity
+from torchmetrics.classification import BinaryAccuracy, BinaryF1Score, BinaryPrecision, BinaryRecall
+from torchmetrics.image import PeakSignalNoiseRatio, MultiScaleStructuralSimilarityIndexMeasure, StructuralSimilarityIndexMeasure
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -105,18 +109,32 @@ class ModelsGroup():
                 f"date{current_time}{file_type}")
         path = path.replace("__", "_")
         return path
+    
+    def tensor_to_mask(self, tensor):
+        return (torch.sigmoid(tensor.detach().clone()) > 0.5).float()
 
-    def compare_metrics(self, use_test_data):
+    def compare_metrics(self, use_test_data, seg_model_path):
         """
         Calculate automated metrics to compare the models.
         """
         metrics = {"PSNR": PeakSignalNoiseRatio(data_range=(0, 1)).to(device),
                    "SSIM": StructuralSimilarityIndexMeasure(data_range=(0, 1)).to(device),
                    "MS-SSIM": MultiScaleStructuralSimilarityIndexMeasure(data_range=(0, 1)).to(device),
-                   "LPIPS": LearnedPerceptualImagePatchSimilarity().to(device)}
+                   "LPIPS": LearnedPerceptualImagePatchSimilarity().to(device),
+                   "MSE":MeanSquaredError().to(device),
+                   "R2":R2Score().to(device),
+                   "Accuracy":BinaryAccuracy().to(device),
+                   "F1":BinaryF1Score().to(device),
+                   "Precision":BinaryPrecision().to(device),
+                   "Recall":BinaryRecall().to(device),
+                   "IOU":MeanIoU(num_classes=1).to(device),
+                   "Dice":GeneralizedDiceScore(num_classes=1).to(device)}
         fids = {generator_name : FrechetInceptionDistance(normalize=True).to(device) for generator_name in self.generators}
         metrics_results = {metric: defaultdict(list) for metric in list(metrics.keys()) + ["Inference", "FID"]}
         image_names = []
+        seg_model = segmentation_model.SegmentationModel(data_path=self.data_path,
+                                                         pretrained_model_path=seg_model_path,
+                                                         train=False).model
 
         print("\nCalculating metrics...")
         loader = self.test_loader if use_test_data else self.val_loader
@@ -132,7 +150,6 @@ class ModelsGroup():
 
                 input_stack_copy = input_stack.detach().clone()
                 ground_truth_copy = ground_truth.detach().clone()
-
                 start_time = time.time()
                 torch.manual_seed(47)
                 if self.compare == "topography": input_stack_copy = topography_inputs[generator_name].detach().clone()
@@ -140,10 +157,21 @@ class ModelsGroup():
                 inference_time = time.time()-start_time
                 ground_truth_copy = torch.clamp((ground_truth_copy + 1) * 0.5, min=0, max=1)
                 generator_output = torch.clamp((generator_output + 1) * 0.5, min=0, max=1)
+                output_mask = self.tensor_to_mask(seg_model(generator_output.detach().clone()))
+                true_mask = self.tensor_to_mask(seg_model(ground_truth_copy.detach().clone()))
+                flat_true_mask = true_mask.squeeze().flatten()
+                flat_output_mask = output_mask.squeeze().flatten()
+                int_true_mask = true_mask.int()
+                int_output_mask = output_mask.int()
 
-                for metrics_name in metrics:
+                for metrics_name in ["PSNR", "SSIM", "MS-SSIM", "LPIPS"]:
                     metrics_results[metrics_name][generator_name].append(metrics[metrics_name](generator_output.detach().clone(), ground_truth_copy.detach().clone()).item())
                     metrics[metrics_name].reset()
+                for metrics_name in ["MSE", "R2", "Accuracy", "F1", "Precision", "Recall"]:
+                    metrics_results[metrics_name][generator_name].append(metrics[metrics_name](flat_output_mask.detach().clone(), flat_true_mask.detach().clone()).item())
+                for metrics_name in ["IOU", "Dice"]:
+                    metrics_results[metrics_name][generator_name].append(metrics[metrics_name](int_output_mask.detach().clone(), int_true_mask.detach().clone()).item())
+
                 fids[generator_name].update(ground_truth_copy.detach().clone(), real=True)
                 fids[generator_name].update(generator_output.detach().clone(), real=False)
                 metrics_results["Inference"][generator_name].append(inference_time)
@@ -166,7 +194,7 @@ class ModelsGroup():
         average_metrics.to_csv(self.create_path("metric"))
 
         grouped_by_disaster = list()
-        for metrics_name in ["PSNR", "SSIM", "MS-SSIM", "LPIPS"]:
+        for metrics_name in ["PSNR", "SSIM", "MS-SSIM", "LPIPS", "MSE", "R2", "Accuracy", "F1", "Precision", "Recall", "IOU", "Dice"]:
             single_metric_df = pd.DataFrame([metrics_results[metrics_name][generator_name] for generator_name in self.generators]).transpose()
             single_metric_df.columns = [f"{metrics_name}_{generator_name}" for generator_name in self.generators.keys()]
             single_metric_df["disaster"] = [image_name.split("_")[0] for image_name in image_names]

@@ -23,6 +23,7 @@ if __name__ == "__main__":
     parser.add_argument("--plot_single_image", default=None, help="Plot a single image of the given type, must be one of 'input' 'ground truth' 'output' or 'attention mask'")
     parser.add_argument("--plot_image_set", action="store_true", default=False, help="Plot a set of input, ground truth, output and attention mask (if appropriate)")
     parser.add_argument("--calculate_metrics", action="store_true", default=False, help="Calculate metrics for the current model")
+    parser.add_argument("--segmentation_model_path", default=None, help="Path to a pre-trained flood segmentation model, required to calculate metrics")
 
     args = parser.parse_args()
     args.model = args.model.lower()
@@ -59,4 +60,6 @@ if __name__ == "__main__":
                                   crop_index=args.crop_index)
         
     if args.calculate_metrics:
-        evaluate_model.calculate_metrics()
+        if not args.segmentation_model_path:
+            raise ValueError("To calculate metrics, a pre-trained flood segmentation model must be provided.")
+        evaluate_model.calculate_metrics(seg_model_path=args.segmentation_model_path)

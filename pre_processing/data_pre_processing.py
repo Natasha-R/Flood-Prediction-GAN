@@ -124,8 +124,11 @@ def create_dataset_split_metadata(metadata_path, path):
     dataset_split.to_csv("dataset_split.csv", index=False)
 
 def create_masks_metadata(masks_path, country):
-    # create the metadata for training the flood segmentation model on mask data
-    masks_metadata = pd.DataFrame({"image": [image_name for image_name in os.listdir(masks_path)]})
+    # create the metadata for training the flood segmentation model on the masks data
+    disasters = ["hurricane-harvey", "hurricane-florence", "midwest-flooding"] if country.lower()=="usa" else ["nepal-flooding"]
+    images = [image_name for image_name in os.listdir(masks_path) if any(disaster in image_name for disaster in disasters)]
+
+    masks_metadata = pd.DataFrame({"image": images})
     train_masks_metadata = masks_metadata.sample(frac=0.8, random_state=47)
     val_test_masks_metadata = masks_metadata[~masks_metadata.index.isin(train_masks_metadata.index)]
 
@@ -147,7 +150,7 @@ def create_masks_metadata(masks_path, country):
     masks_metadata = pd.concat([train_masks_metadata, flipped_masks_train, val_masks_metadata, test_masks_metadata, val_test_masks_metadata])
     masks_metadata["country"] = country
 
-    masks_metadata.to_csv("metadata/masks_metadata.csv", index=False)
+    masks_metadata.to_csv("metadata/masks_metadata.csv", mode="a", header=not os.path.exists("metadata/masks_metadata.csv"), index=False)
 
 ### Digital Elevation Model ####################################
 

@@ -16,6 +16,7 @@ if __name__ == "__main__":
     parser.add_argument("--pretrained_model_path", default=None, help="When evaluating (train==False), this path must point to a pre-trained model")
     parser.add_argument("--plot_mask_image", default=None, help="Plot and save the mask generated from the image at the given path")
     parser.add_argument("--seed", type=int, default=47, help="The random seed to initialise the models")
+    parser.add_argument("--use_test_data", action="store_true", default=False, help="Use the test dataset instead of the validation dataset.")
 
     args = parser.parse_args()
 
@@ -34,5 +35,5 @@ if __name__ == "__main__":
     else:
         model.plot_loss()
         model.plot_sample_images(20)
-        model.calculate_metrics()
+        model.calculate_metrics(args.use_test_data)
 

@@ -62,4 +62,4 @@ if __name__ == "__main__":
     if args.calculate_metrics:
         if not args.segmentation_model_path:
             raise ValueError("To calculate metrics, a pre-trained flood segmentation model must be provided.")
-        evaluate_model.calculate_metrics(seg_model_path=args.segmentation_model_path)
+        evaluate_model.calculate_metrics(use_test_data=args.use_test_data, seg_model_path=args.segmentation_model_path)

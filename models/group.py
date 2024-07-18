@@ -215,6 +215,8 @@ class ModelsGroup():
                                  figsize=((len(self.generators)+2) * 5, (len(image_names) * 5) + (0.5 * len(image_names))))
         for ax in axes.ravel():
             ax.set_axis_off()
+        if len(image_names)==1:
+            axes = np.expand_dims(axes, axis=0)
 
         for i, image_name in enumerate(image_names):
             if image_name[-2] == "_": 
@@ -256,7 +258,8 @@ class ModelsGroup():
                 axes[i, j].set_title(generator_name)
 
         fig.tight_layout()
-        images_path = self.create_path(save_type="image")
+        info = image_names[0] if len(image_names) == 1 else ""
+        images_path = self.create_path(save_type="image", info=info)
         print(f"\nSaving comparison of {self.compare} images to {images_path}")
         fig.savefig(images_path, bbox_inches="tight")
         plt.close()

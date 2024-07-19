@@ -6,5 +6,5 @@ This project is a current **work in progress**, hence the code and documentation
 - [x] Data pre-processing  
 - [x] Creating models 
 - [x] Training models 
-- [ ] Evaluating results ``🛠️ currently working on 🛠️`` 
-- [ ] Results presentation
+- [x] Evaluating results 
+- [ ] Results presentation ``🛠️ currently working on 🛠️`` 

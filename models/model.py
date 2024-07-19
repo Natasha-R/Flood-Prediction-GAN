@@ -238,7 +238,7 @@ class Model():
                            "cyclegan":"CycleGAN",
                            "attentiongan":"AttentionGAN",
                            "pairedattention":"PairedAttention"}
-        return model_to_pretty[model_name] if model_name else model_to_pretty[self.model]
+        return model_to_pretty[model_name.lower()] if model_name else model_to_pretty[self.model]
     
     def create_path(self, save_type, info=""):
         """

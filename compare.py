@@ -29,7 +29,7 @@ if __name__ == "__main__":
     parser.add_argument("--model_1_path", default=None, help="Path to pre-trained model 1")
     parser.add_argument("--model_2_path", default=None, help="Path to pre-trained model 2")
 
-    parser.add_argument("--compare", required=True, help="Compare the performance of either 'models' 'topgoraphy' or 'two'")
+    parser.add_argument("--compare", required=True, help="Compare the performance of either 'models' 'topography' or 'two'")
     parser.add_argument("--image_names", default=None, nargs="+", help=("The names of the images to compare on the models." 
                                                                         "Optionally add '_index' to the end of image names to specify the crop index"))
     parser.add_argument("--calculate_metrics", action="store_true", default=False, help=("Calculate automated metrics to compare the models"))

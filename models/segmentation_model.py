@@ -32,6 +32,7 @@ class SegmentationModel():
                  pretrained_model_path=None,
                  train=False,
                  plot_mask_image=None,
+                 use_test_data=False,
                  seed=47):
     
         if verbose:

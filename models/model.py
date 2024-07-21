@@ -16,9 +16,7 @@ import matplotlib.pyplot as plt
 import torch
 from torch import nn
 from torch.optim import lr_scheduler
-from torchmetrics.image.fid import FrechetInceptionDistance
-from torchmetrics.regression import MeanSquaredError, R2Score
-from torchmetrics.segmentation import GeneralizedDiceScore, MeanIoU
+from torchmetrics.regression import MeanSquaredError
 from torchmetrics.image.lpip import LearnedPerceptualImagePatchSimilarity
 from torchmetrics.classification import BinaryAccuracy, BinaryF1Score, BinaryPrecision, BinaryRecall
 from torchmetrics.image import PeakSignalNoiseRatio, MultiScaleStructuralSimilarityIndexMeasure, StructuralSimilarityIndexMeasure
@@ -245,7 +243,8 @@ class Model():
         Defines an informative path string to save images or models to, 
         containing information about the model and dataset.
         """
-        file_type = ".png" if save_type=="image" or save_type=="figure" else ".pth.tar"
+        file_types = {"image":".png", "figure":".png", "model":".pth.tar", "metric":".csv"}
+        file_type = file_types[save_type]
         model_name = self.prettify_model_name()
         current_time = str(datetime.now())[:-7].replace(' ', '-').replace(':', '-')
         add_identity_loss = f"identity{self.add_identity_loss}" if self.model_is_cycle else ""
@@ -370,14 +369,13 @@ class Model():
                     "MS-SSIM": MultiScaleStructuralSimilarityIndexMeasure(data_range=(0, 1)).to(device),
                     "LPIPS": LearnedPerceptualImagePatchSimilarity().to(device),
                     "MSE":MeanSquaredError().to(device),
-                    "R2":R2Score().to(device),
                     "Accuracy":BinaryAccuracy().to(device),
-                    "F1":BinaryF1Score().to(device),
-                    "Precision":BinaryPrecision().to(device),
-                    "Recall":BinaryRecall().to(device),
-                    "IOU":MeanIoU(num_classes=1).to(device),
-                    "Dice":GeneralizedDiceScore(num_classes=1).to(device)}
-        fid = FrechetInceptionDistance(normalize=True).to(device)
+                    "F1_Flood":BinaryF1Score().to(device),
+                    "Precision_Flood":BinaryPrecision().to(device),
+                    "Recall_Flood":BinaryRecall().to(device),
+                    "F1_No_Flood":BinaryF1Score().to(device),
+                    "Precision_No_Flood":BinaryPrecision().to(device),
+                    "Recall_No_Flood":BinaryRecall().to(device)}
         metrics_results = {metric: list() for metric in list(metrics.keys()) + ["Inference"]}
         seg_model = segmentation_model.SegmentationModel(data_path=self.data_path,
                                                          pretrained_model_path=seg_model_path,
@@ -385,6 +383,8 @@ class Model():
 
         print("\nCalculating metrics...")
         loader = self.test_loader if use_test_data else self.val_loader
+        all_true_flood_mask = None
+        all_output_flood_mask = None
         for input_stack, ground_truth, _ in tqdm(loader, desc="Images", leave=False):
 
             input_stack = utils.extract_input_topography(input_stack, self.topography).detach().clone().to(device)
@@ -398,26 +398,28 @@ class Model():
             generator_output = torch.clamp((generator_output + 1) * 0.5, min=0, max=1)
             output_mask = (torch.sigmoid(seg_model(generator_output.detach().clone())) > 0.5).float()
             true_mask = (torch.sigmoid(seg_model(ground_truth.detach().clone())) > 0.5).float()
-
-            flat_true_mask = true_mask.squeeze().flatten()
-            flat_output_mask = output_mask.squeeze().flatten()
-            int_true_mask = true_mask.int()
-            int_output_mask = output_mask.int()
+            flat_true_mask = true_mask.detach().clone().squeeze().flatten().squeeze()
+            flat_output_mask = output_mask.detach().clone().squeeze().flatten().squeeze()
 
             for metrics_name in ["PSNR", "SSIM", "MS-SSIM", "LPIPS"]:
                 metrics_results[metrics_name].append(metrics[metrics_name](generator_output.detach().clone(), ground_truth.detach().clone()).item())
                 metrics[metrics_name].reset()
-            for metrics_name in ["MSE", "R2", "Accuracy", "F1", "Precision", "Recall"]:
-                metrics_results[metrics_name].append(metrics[metrics_name](flat_output_mask.detach().clone(), flat_true_mask.detach().clone()).item())
-            for metrics_name in ["IOU", "Dice"]:
-                metrics_results[metrics_name].append(metrics[metrics_name](int_output_mask.detach().clone(), int_true_mask.detach().clone()).item())
-            fid.update(ground_truth.detach().clone(), real=True)
-            fid.update(generator_output.detach().clone(), real=False)
             metrics_results["Inference"].append(inference_time)
 
-        for metrics_name in metrics_results:
-            print(f"{metrics_name}: {np.mean(metrics_results[metrics_name]):.3f} +/- {np.std(metrics_results[metrics_name], ddof=1) / np.sqrt(len(metrics_results[metrics_name])):.3f}")
-        print(f"FID: {fid.compute().item():.3f}")
+            all_true_flood_mask = torch.cat((all_true_flood_mask, flat_true_mask), dim=0).to(device) if not all_true_flood_mask==None else flat_true_mask
+            all_output_flood_mask = torch.cat((all_output_flood_mask, flat_output_mask), dim=0).to(device) if not all_output_flood_mask==None else flat_output_mask
+
+        for metrics_name in ["MSE", "Accuracy", "F1_Flood", "Precision_Flood", "Recall_Flood"]:
+            metrics_results[metrics_name].append(metrics[metrics_name](all_output_flood_mask, all_true_flood_mask).item())
+
+        all_true_no_flood_mask = torch.abs(all_true_flood_mask-1)
+        all_output_no_flood_mask = torch.abs(all_output_flood_mask-1)
+        for metrics_name in ["F1_No_Flood", "Precision_No_Flood", "Recall_No_Flood"]:
+            metrics_results[metrics_name].append(metrics[metrics_name](all_output_no_flood_mask, all_true_no_flood_mask).item())
+
+        metrics_df = pd.DataFrame([(metrics_name, np.mean(metrics_results[metrics_name])) for metrics_name in metrics_results]).set_index(0).transpose()
+        print(metrics_df)
+        metrics_df.to_csv(self.create_path("metric"))
 
     def plot_losses(self):
         """

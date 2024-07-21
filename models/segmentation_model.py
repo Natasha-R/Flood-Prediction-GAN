@@ -3,7 +3,7 @@ from models import model_architectures
 
 import time
 import numpy as np
-import tifffile as tf
+import pandas as pd
 from tqdm import tqdm
 from datetime import datetime
 import matplotlib.pyplot as plt
@@ -11,8 +11,7 @@ import matplotlib.pyplot as plt
 import torch
 from torch import nn
 from torch.optim import lr_scheduler
-from torchmetrics.regression import MeanSquaredError, R2Score
-from torchmetrics.segmentation import GeneralizedDiceScore, MeanIoU
+from torchmetrics.regression import MeanSquaredError
 from torchmetrics.classification import BinaryAccuracy, BinaryF1Score, BinaryPrecision, BinaryRecall
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -97,7 +96,8 @@ class SegmentationModel():
         Defines an informative path string to save images or models to, 
         containing information about the model and dataset.
         """
-        file_type = ".png" if save_type=="image" or save_type=="figure" else ".pth.tar"
+        file_types = {"image":".png", "figure":".png", "model":".pth.tar", "metric":".csv"}
+        file_type = file_types[save_type]
         current_time = str(datetime.now())[:-7].replace(' ', '-').replace(':', '-')
         path = (f"{self.data_path}/{save_type}s/"
         f"SegmentationModel_epoch{self.current_epoch if self.train else self.current_epoch-1}_"
@@ -141,15 +141,16 @@ class SegmentationModel():
                                                                             path=self.data_path,
                                                                             train_on_all=self.train_on_all)
         dataloader = test_loader if use_test_data else val_loader
-
+        all_true_flood_mask = None
+        all_predicted_flood_mask = None
         metrics = {"MSE":MeanSquaredError().to(device),
-                    "R2":R2Score().to(device),
                     "Accuracy":BinaryAccuracy().to(device),
-                    "F1":BinaryF1Score().to(device),
-                    "Precision":BinaryPrecision().to(device),
-                    "Recall":BinaryRecall().to(device),
-                    "IOU":MeanIoU(num_classes=1).to(device),
-                    "Dice":GeneralizedDiceScore(num_classes=1).to(device)}
+                    "F1_Flood":BinaryF1Score().to(device),
+                    "Precision_Flood":BinaryPrecision().to(device),
+                    "Recall_Flood":BinaryRecall().to(device),
+                    "F1_No_Flood":BinaryF1Score().to(device),
+                    "Precision_No_Flood":BinaryPrecision().to(device),
+                    "Recall_No_Flood":BinaryRecall().to(device)}
         metrics_results = {metric: list() for metric in list(metrics.keys())}
         
         print("\nCalculating metrics...")
@@ -158,22 +159,22 @@ class SegmentationModel():
             input_image = input_image.to(device)
             true_mask = self.tensor_to_mask(true_mask, predicted=False).to(device)
             predicted_mask  = self.tensor_to_mask(self.model(input_image), predicted=True).to(device)
-            flat_true_mask = true_mask.squeeze().flatten()
-            flat_predicted_mask = predicted_mask.squeeze().flatten()
-            int_true_mask = true_mask.int()
-            int_predicted_mask = predicted_mask.int()
+            flat_true_mask = true_mask.detach().clone().squeeze().flatten().squeeze()
+            flat_predicted_mask = predicted_mask.detach().clone().squeeze().flatten().squeeze()
 
-            for metrics_name in metrics:
-                if metrics_name in ["IOU", "Dice"]:
-                    pred = int_predicted_mask.detach().clone()
-                    true = int_true_mask.detach().clone()
-                else:
-                    pred = flat_predicted_mask.detach().clone()
-                    true = flat_true_mask.detach().clone()
-                metrics_results[metrics_name].append(metrics[metrics_name](pred, true).item())
+            all_true_flood_mask = torch.cat((all_true_flood_mask, flat_true_mask), dim=0).to(device) if not all_true_flood_mask==None else flat_true_mask
+            all_predicted_flood_mask = torch.cat((all_predicted_flood_mask, flat_predicted_mask), dim=0).to(device) if not all_predicted_flood_mask==None else flat_predicted_mask
 
-        for metrics_name in metrics_results:
-            print(f"{metrics_name}: {np.mean(metrics_results[metrics_name]):.3f} +/- {np.std(metrics_results[metrics_name], ddof=1) / np.sqrt(len(metrics_results[metrics_name])):.3f}")
+        for metrics_name in ["MSE", "Accuracy", "F1_Flood", "Precision_Flood", "Recall_Flood"]:
+            metrics_results[metrics_name].append(metrics[metrics_name](all_predicted_flood_mask, all_true_flood_mask).item())
+        all_true_no_flood_mask = torch.abs(all_true_flood_mask-1)
+        all_predicted_no_flood_mask = torch.abs(all_predicted_flood_mask-1)
+        for metrics_name in ["F1_No_Flood", "Precision_No_Flood", "Recall_No_Flood"]:
+            metrics_results[metrics_name].append(metrics[metrics_name](all_predicted_no_flood_mask, all_true_no_flood_mask).item())
+
+        metrics_df = pd.DataFrame([(metrics_name, np.mean(metrics_results[metrics_name])) for metrics_name in metrics_results]).set_index(0).transpose()
+        print(metrics_df)
+        metrics_df.to_csv(self.create_path("metric"))
 
     def plot_loss(self):
         """

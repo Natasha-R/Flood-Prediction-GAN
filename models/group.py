@@ -15,9 +15,7 @@ import matplotlib.pyplot as plt
 from collections import defaultdict
 
 import torch
-from torchmetrics.image.fid import FrechetInceptionDistance
-from torchmetrics.regression import MeanSquaredError, R2Score
-from torchmetrics.segmentation import GeneralizedDiceScore, MeanIoU
+from torchmetrics.regression import MeanSquaredError
 from torchmetrics.image.lpip import LearnedPerceptualImagePatchSimilarity
 from torchmetrics.classification import BinaryAccuracy, BinaryF1Score, BinaryPrecision, BinaryRecall
 from torchmetrics.image import PeakSignalNoiseRatio, MultiScaleStructuralSimilarityIndexMeasure, StructuralSimilarityIndexMeasure
@@ -118,19 +116,22 @@ class ModelsGroup():
         Calculate automated metrics to compare the models.
         """
         metrics = {"PSNR": PeakSignalNoiseRatio(data_range=(0, 1)).to(device),
-                   "SSIM": StructuralSimilarityIndexMeasure(data_range=(0, 1)).to(device),
-                   "MS-SSIM": MultiScaleStructuralSimilarityIndexMeasure(data_range=(0, 1)).to(device),
-                   "LPIPS": LearnedPerceptualImagePatchSimilarity().to(device),
-                   "MSE":MeanSquaredError().to(device),
-                   "R2":R2Score().to(device),
-                   "Accuracy":BinaryAccuracy().to(device),
-                   "F1":BinaryF1Score().to(device),
-                   "Precision":BinaryPrecision().to(device),
-                   "Recall":BinaryRecall().to(device),
-                   "IOU":MeanIoU(num_classes=1).to(device),
-                   "Dice":GeneralizedDiceScore(num_classes=1).to(device)}
-        fids = {generator_name : FrechetInceptionDistance(normalize=True).to(device) for generator_name in self.generators}
-        metrics_results = {metric: defaultdict(list) for metric in list(metrics.keys()) + ["Inference", "FID"]}
+                    "SSIM": StructuralSimilarityIndexMeasure(data_range=(0, 1)).to(device),
+                    "MS-SSIM": MultiScaleStructuralSimilarityIndexMeasure(data_range=(0, 1)).to(device),
+                    "LPIPS": LearnedPerceptualImagePatchSimilarity().to(device),
+                    "MSE":MeanSquaredError().to(device),
+                    "Accuracy":BinaryAccuracy().to(device),
+                    "F1_Flood":BinaryF1Score().to(device),
+                    "Precision_Flood":BinaryPrecision().to(device),
+                    "Recall_Flood":BinaryRecall().to(device),
+                    "F1_No_Flood":BinaryF1Score().to(device),
+                    "Precision_No_Flood":BinaryPrecision().to(device),
+                    "Recall_No_Flood":BinaryRecall().to(device)}
+        metrics_results = {metric: defaultdict(list) for metric in list(metrics.keys()) + ["Inference"]}
+        all_true_flood_masks = defaultdict(lambda: "None")
+        all_output_flood_masks = defaultdict(lambda: "None")
+        all_true_flood_masks_grouped = defaultdict(lambda: "None")
+        all_output_flood_masks_grouped = defaultdict(lambda: "None")
         image_names = []
         seg_model = segmentation_model.SegmentationModel(data_path=self.data_path,
                                                          pretrained_model_path=seg_model_path,
@@ -143,6 +144,7 @@ class ModelsGroup():
             input_stack = input_stack.to(device)
             ground_truth = ground_truth.to(device)
             image_names.append(image_name[0])
+            disaster_name = image_name[0].split("_")[0]
 
             if self.compare == "topography": topography_inputs = self.extract_input_topography(input_stack)
 
@@ -159,32 +161,45 @@ class ModelsGroup():
                 generator_output = torch.clamp((generator_output + 1) * 0.5, min=0, max=1)
                 output_mask = self.tensor_to_mask(seg_model(generator_output.detach().clone()))
                 true_mask = self.tensor_to_mask(seg_model(ground_truth_copy.detach().clone()))
-                flat_true_mask = true_mask.squeeze().flatten()
-                flat_output_mask = output_mask.squeeze().flatten()
-                int_true_mask = true_mask.int()
-                int_output_mask = output_mask.int()
+                flat_true_mask = true_mask.detach().clone().squeeze().flatten().squeeze()
+                flat_output_mask = output_mask.detach().clone().squeeze().flatten().squeeze()
 
                 for metrics_name in ["PSNR", "SSIM", "MS-SSIM", "LPIPS"]:
                     metrics_results[metrics_name][generator_name].append(metrics[metrics_name](generator_output.detach().clone(), ground_truth_copy.detach().clone()).item())
                     metrics[metrics_name].reset()
-                for metrics_name in ["MSE", "R2", "Accuracy", "F1", "Precision", "Recall"]:
-                    metrics_results[metrics_name][generator_name].append(metrics[metrics_name](flat_output_mask.detach().clone(), flat_true_mask.detach().clone()).item())
-                for metrics_name in ["IOU", "Dice"]:
-                    metrics_results[metrics_name][generator_name].append(metrics[metrics_name](int_output_mask.detach().clone(), int_true_mask.detach().clone()).item())
-
-                fids[generator_name].update(ground_truth_copy.detach().clone(), real=True)
-                fids[generator_name].update(generator_output.detach().clone(), real=False)
                 metrics_results["Inference"][generator_name].append(inference_time)
 
+                all_true_flood_masks[generator_name] = torch.cat((all_true_flood_masks[generator_name], flat_true_mask), dim=0) if not all_true_flood_masks[generator_name]=="None" else flat_true_mask
+                all_output_flood_masks[generator_name] = torch.cat((all_output_flood_masks[generator_name], flat_output_mask), dim=0) if not all_output_flood_masks[generator_name]=="None" else flat_output_mask
+
+                all_true_flood_masks_grouped[f"{generator_name}_{disaster_name}"] = torch.cat((all_true_flood_masks_grouped[f"{generator_name}_{disaster_name}"], flat_true_mask), dim=0) if not all_true_flood_masks_grouped[f"{generator_name}_{disaster_name}"]=="None" else flat_true_mask
+                all_output_flood_masks_grouped[f"{generator_name}_{disaster_name}"] = torch.cat((all_output_flood_masks_grouped[f"{generator_name}_{disaster_name}"], flat_output_mask), dim=0) if not all_output_flood_masks_grouped[f"{generator_name}_{disaster_name}"]=="None" else flat_output_mask
+
+        disaster_names = list(set(image_name.split("_")[0] for image_name in image_names))
+        grouped_results = {value:[] for value in ["Metric_Model"] + disaster_names}
+
         for generator_name in self.generators:
-            metrics_results["FID"][generator_name].append(fids[generator_name].compute().item())   
-        for generator_name in self.generators:
+            for metrics_name in ["MSE", "Accuracy", "F1_Flood", "Precision_Flood", "Recall_Flood", "F1_No_Flood", "Precision_No_Flood", "Recall_No_Flood"]:
+                if "No" in metrics_name:
+                    all_output_masks_inverted = torch.abs(all_output_flood_masks[generator_name]-1)
+                    all_true_masks_inverted = torch.abs(all_true_flood_masks[generator_name]-1)
+                    metrics_results[metrics_name][generator_name].append(metrics[metrics_name](all_output_masks_inverted, all_true_masks_inverted).item())
+                else:
+                    metrics_results[metrics_name][generator_name].append(metrics[metrics_name](all_output_flood_masks[generator_name], all_true_flood_masks[generator_name]).item())
+                grouped_results["Metric_Model"].append(f"{metrics_name}_{generator_name}")
+                for disaster_name in disaster_names:
+                    if "No" in metrics_name:
+                        all_output_grouped_inverted = torch.abs(all_output_flood_masks_grouped[f"{generator_name}_{disaster_name}"]-1)
+                        all_true_grouped_inverted = torch.abs(all_true_flood_masks_grouped[f"{generator_name}_{disaster_name}"]-1)
+                        grouped_results[disaster_name].append(metrics[metrics_name](all_output_grouped_inverted, all_true_grouped_inverted).item())
+                    else:
+                        grouped_results[disaster_name].append(metrics[metrics_name](all_output_flood_masks_grouped[f"{generator_name}_{disaster_name}"], all_true_flood_masks_grouped[f"{generator_name}_{disaster_name}"]).item())
+        
+        for generator_name in self.generators: 
             metrics_results["Inference"][generator_name] = metrics_results["Inference"][generator_name][5:]
             break
-
-        average_metrics = pd.concat([pd.Series([(f"{np.mean(metrics_results[metrics_name][generator_name]):.3f}"
-                                                 " +/- " 
-                                                 f"{np.std(metrics_results[metrics_name][generator_name], ddof=1) / np.sqrt(len(metrics_results[metrics_name][generator_name])):.3f}")
+        
+        average_metrics = pd.concat([pd.Series([np.mean(metrics_results[metrics_name][generator_name])
                                                 for generator_name in self.generators], 
                                                 index=self.generators.keys(), 
                                                 name=metrics_name)
@@ -192,19 +207,19 @@ class ModelsGroup():
         print(average_metrics)
         average_metrics.index.name = "Model"
         average_metrics.to_csv(self.create_path("metric"))
-
+        
         grouped_by_disaster = list()
-        for metrics_name in ["PSNR", "SSIM", "MS-SSIM", "LPIPS", "MSE", "R2", "Accuracy", "F1", "Precision", "Recall", "IOU", "Dice"]:
+        for metrics_name in ["PSNR", "SSIM", "MS-SSIM", "LPIPS"]:
             single_metric_df = pd.DataFrame([metrics_results[metrics_name][generator_name] for generator_name in self.generators]).transpose()
             single_metric_df.columns = [f"{metrics_name}_{generator_name}" for generator_name in self.generators.keys()]
             single_metric_df["disaster"] = [image_name.split("_")[0] for image_name in image_names]
-            grouped_by_disaster.append(single_metric_df.groupby("disaster").agg(["mean", "sem"]).transpose())
+            grouped_by_disaster.append(single_metric_df.groupby("disaster").mean().transpose())
         grouped_metrics = pd.concat(grouped_by_disaster, axis=0).reset_index()
-        grouped_metrics.rename(columns={"level_0":"Metric_Model", "level_1":"function"}, inplace=True)
-        print("")
-        print(grouped_metrics)
+        grouped_metrics.rename(columns={"index":"Metric_Model"}, inplace=True)
+        grouped_metrics = pd.concat([grouped_metrics, pd.DataFrame(grouped_results)])
+        grouped_metrics = grouped_metrics.sort_values(["Metric_Model"])
         grouped_metrics.to_csv(self.create_path("metric", info="grouped"), index=False)
-
+        
     def compare_output_images(self, image_names):
         """
         Compare the outputs of each of the models on the given input images.

@@ -449,6 +449,7 @@ class Model():
             ax.tick_params(axis="both", which="major", labelsize=14)
             ax.set_xlabel("Epoch", fontsize=14)
             ax.set_ylabel("Loss", fontsize=14)
+            ax.grid(alpha=0.4)
         for loss in self.all_losses.keys():
             parameters = plot_parameters[loss]
             axes[parameters["plot"]].plot(range(1, self.starting_epoch),

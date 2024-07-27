@@ -103,6 +103,17 @@ def determine_flood_dataset(subset, dem, crop=None):
         all_val["split"] = "test"
         dataset = pd.concat([dataset, all_val], axis=0).reset_index(drop=True)
         dataset = dataset.drop(dataset[((dataset["split"] == "test") | (dataset["split"] == "validation")) & (dataset["version"] == "flipped")].index)
+    elif subset.lower()=="harveyonflorence":
+        dataset = dataset_split[(dataset_split["disaster"]=="hurricane-harvey") | (dataset_split["disaster"]=="hurricane-florence")].copy()
+        flipped_test = dataset[(dataset["disaster"]=="hurricane-harvey") & (dataset["split"]=="test")].copy()
+        flipped_test["version"] = "flipped"
+        dataset = pd.concat([dataset, flipped_test], axis=0)
+        dataset.loc[dataset["disaster"]=="hurricane-harvey", "split"] = "train"
+        dataset.loc[dataset["disaster"]=="hurricane-florence", "split"] = "validation"
+        all_val = dataset[dataset["disaster"]=="hurricane-florence"].copy()
+        all_val["split"] = "test"
+        dataset = pd.concat([dataset, all_val], axis=0).reset_index(drop=True)
+        dataset = dataset.drop(dataset[((dataset["split"] == "test") | (dataset["split"] == "validation")) & (dataset["version"] == "flipped")].index)
     elif subset.lower()=="testing":
         dataset = dataset_split[dataset_split["disaster"]=="hurricane-harvey"].copy()
         dataset = dataset[dataset["version"]=="original"]

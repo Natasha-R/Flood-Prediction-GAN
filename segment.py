@@ -34,6 +34,6 @@ if __name__ == "__main__":
         model.plot_mask_image(args.plot_mask_image)
     else:
         model.plot_loss()
-        model.plot_sample_images(20)
+        model.plot_sample_images(10, args.use_test_data)
         model.calculate_metrics(args.use_test_data)
 

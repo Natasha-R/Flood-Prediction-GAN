@@ -9,14 +9,6 @@ This repository also contains code for training a flood segmentation model, whic
 <img src="https://github.com/user-attachments/assets/59834fb7-1577-46fc-a506-774519f00b1b" width="600">
 </p>
 
-## Sample output
-
-Sample generated images from different model architectures:
-<img src="https://github.com/user-attachments/assets/92468c4f-fb1c-46f1-b0aa-885dda3ed837">
-
-Sample generated images from different combinations of input factors:
-<img src="https://github.com/user-attachments/assets/bbb39027-dfdf-4f95-952f-a90149a6f041">
-
 ## Dataset
 
 The dataset and associated metadata are available on Zenodo (https://zenodo.org/doi/10.5281/zenodo.13366121) under the Creative Commons Attribution Non-Commercial Share-Alike 4.0 International licence. 
@@ -36,3 +28,11 @@ A model can be evaluated by calculating metrics, plotting the losses over the ep
 
 Multiple models can be compared by their calculated metrics or generated images:  
 ``python compare.py --compare=models --dataset_subset=usa --dataset_dem=same --use_test_data --data_path=path/to/data --resize=512 --crop=4 --topography=all --segmentation_model_path=path/to/segmentation --pix2pix_path=pix2pix/path --cyclegan_path=cyclegan/path --attentiongan_path=attentiongan/path --pairedattention_path=pairedattention/path --calculate_metrics --image_names hurricane-harvey_00000257_3 hurricane-harvey_00000268_1``
+
+## Sample output
+
+Sample generated images from different model architectures:
+<img src="https://github.com/user-attachments/assets/92468c4f-fb1c-46f1-b0aa-885dda3ed837">
+
+Sample generated images from different combinations of input factors:
+<img src="https://github.com/user-attachments/assets/bbb39027-dfdf-4f95-952f-a90149a6f041">

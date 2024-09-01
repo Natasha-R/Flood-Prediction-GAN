@@ -1,6 +1,8 @@
-## Generating Aerial Flood Prediction Imagery with Generative Adversarial Networks
+# Generating Aerial Flood Prediction Imagery with Generative Adversarial Networks
 
-This repository contains the code for training generative adversarial networks (GANs) to generate aerial flood prediction imagery. The GANs are input with a pre-flooding satellite image in addition to informative factors, such as a digital elevation model, flow accumulation, distance to rivers, and OSM map. The GANs output a photorealistic post-flooding image prediction. The repository also contains code for training a flood segmentation model, which when input a post-flooding satellite image, outputs a binary mask indicating the locations of floodwaters. The segmentation model can hence be used to evaluate the predictions of the GANs, by comparing the flood masks of a pair of predicted and ground truth images.
+This repository contains the code for training generative adversarial networks (GANs) to generate aerial flood prediction imagery. The GANs are input with a pre-flooding satellite image in addition to informative factors such as a digital elevation model, flow accumulation, distance to rivers, and OSM map. The GANs output a photorealistic post-flooding image prediction. 
+
+This repository also contains code for training a flood segmentation model, which when input a post-flooding satellite image, outputs a binary mask indicating the locations of floodwaters. The segmentation model can hence be used to evaluate the predictions of the GANs, by comparing the flood masks of a pair of predicted and ground truth images.
 
 <p align="center">
 <img src="https://github.com/user-attachments/assets/e01d782d-c269-47e7-9a0a-5c1dc3d77eb7" width="750">
@@ -17,7 +19,7 @@ Sample generated images from different combinations of input factors:
 
 ## Dataset
 
-The dataset and associated metadata is available on Zenodo (https://zenodo.org/doi/10.5281/zenodo.13366121) under the Creative Commons Attribution Non-Commercial Share-Alike 4.0 International licence. 
+The dataset and associated metadata are available on Zenodo (https://zenodo.org/doi/10.5281/zenodo.13366121) under the Creative Commons Attribution Non-Commercial Share-Alike 4.0 International licence. 
 
 ## Training
 

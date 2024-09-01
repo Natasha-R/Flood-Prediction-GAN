@@ -48,12 +48,12 @@ if __name__ == "__main__":
         if not (args.all_topography_path and args.none_topography_path and args.dem_topography_path and args.river_topography_path and args.flow_topography_path and args.map_topography_path):
             raise ValueError("Paths to all, none, DEM, river distance, flow accumulation and map topography models must be provided.")
         paths = {"All": args.all_topography_path,
-                 "None": args.none_topography_path,
                  "DEM": args.dem_topography_path,
-                 "River": args.river_topography_path,
-                 "Flow": args.flow_topography_path,
-                 "Map": args.map_topography_path}
-
+                 "Flow accumulation": args.flow_topography_path,
+                 "Distance to rivers": args.river_topography_path,
+                 "Map": args.map_topography_path,
+                 "None": args.none_topography_path,}
+                 
     elif args.compare == "two":
         paths = {"Model 1": args.model_1_path,
                  "Model 2": args.model_2_path}

@@ -4,7 +4,7 @@ import os
 import argparse
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Train the Pix2Pix, CycleGAN, AttentionGAN or PairedAttention model on the flood images dataset")
+    parser = argparse.ArgumentParser(description="Train (or evaluate) the flood segmentation model")
     parser.add_argument("--train", action="store_true", default=False, help="Train the model, else evaluate a pre-trained model")
     parser.add_argument("--dataset_subset", required=True, help="Specify the dataset subset, either 'USA' or 'India'")
     parser.add_argument("--train_on_all", action="store_true", default=False, help="Whether the model should train on the full dataset (e.g. for deployment, not evaluation)")

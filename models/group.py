@@ -87,8 +87,8 @@ class ModelsGroup():
         topography_inputs = dict()
         topography_inputs["All"] = input_image
         topography_inputs["DEM"] = input_image[:, :4, :, :]
-        topography_inputs["Flow"] = torch.cat((input_image[:, :3, :, :], input_image[:, 4, :, :].unsqueeze(dim=0)), 1)
-        topography_inputs["River"] = torch.cat((input_image[:, :3, :, :], input_image[:, 5, :, :].unsqueeze(dim=0)), 1)
+        topography_inputs["Flow accumulation"] = torch.cat((input_image[:, :3, :, :], input_image[:, 4, :, :].unsqueeze(dim=0)), 1)
+        topography_inputs["Distance to rivers"] = torch.cat((input_image[:, :3, :, :], input_image[:, 5, :, :].unsqueeze(dim=0)), 1)
         topography_inputs["Map"] = torch.cat((input_image[:, :3, :, :], input_image[:, 6: :, :]), 1)
         topography_inputs["None"] = input_image[:, :3, :, :]
         return topography_inputs

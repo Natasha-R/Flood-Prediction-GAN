@@ -4,6 +4,20 @@ This repository contains the code for training generative adversarial networks (
 
 This repository also contains code for training a flood segmentation model, which when input a post-flooding satellite image, outputs a binary mask indicating the locations of floodwaters. The segmentation model can hence be used to evaluate the predictions of the GANs, by comparing the flood masks of a pair of predicted and ground truth images.
 
+If you use this work, please cite:
+
+```@conference{kdir25,
+author={Natasha Randall and Gernot Heisenberg and Juan Duval},
+title={Generating Aerial Flood Prediction Imagery with Generative Adversarial Networks},
+booktitle={Proceedings of the 17th International Joint Conference on Knowledge Discovery, Knowledge Engineering and Knowledge Management - Volume 1: KDIR},
+year={2025},
+pages={15-27},
+publisher={SciTePress},
+organization={INSTICC},
+doi={10.5220/0013663400004000},
+}
+```
+
 <p align="center">
 <img src="https://github.com/user-attachments/assets/e01d782d-c269-47e7-9a0a-5c1dc3d77eb7" width="750">
 <img src="https://github.com/user-attachments/assets/59834fb7-1577-46fc-a506-774519f00b1b" width="600">
